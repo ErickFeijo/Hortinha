@@ -6,6 +6,7 @@
   --soil-color: #b9936c;
   --plot-soil-color: #a1805b;
   --watered-soil-color: #8a6d51;
+  --chemical-soil-color: #8f7d6b;
   --wood-panel: #d2b48c;
   --wood-border: #8b5a2b;
   --text-color: #3a2e1c;
@@ -82,6 +83,89 @@ body {
   width: 100%;
   /* Set max-width to contain the grid (328px) + padding + border */
   max-width: calc(328px + 3rem + 16px);
+  position: relative;
+}
+
+/* Wind Effect */
+.wind-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 5;
+  overflow: hidden;
+  border-radius: 8px;
+}
+
+.wind-line {
+  position: absolute;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.6), transparent);
+  height: 3px;
+  border-radius: 50%;
+  opacity: 0;
+}
+
+.wind-pollen {
+  position: absolute;
+  background-color: #FFD700;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  opacity: 0;
+  box-shadow: 0 0 4px rgba(255, 215, 0, 0.8);
+}
+
+/* More varied wind lines */
+.wind-line:nth-child(1) { top: 15%; left: -150px; width: 250px; animation: wind-blow 2.5s linear infinite; animation-delay: 0s; }
+.wind-line:nth-child(2) { top: 35%; left: -100px; width: 180px; animation: wind-blow 3.0s linear infinite; animation-delay: 0.5s; }
+.wind-line:nth-child(3) { top: 55%; left: -200px; width: 300px; animation: wind-blow 2.2s linear infinite; animation-delay: 0.2s; }
+.wind-line:nth-child(4) { top: 75%; left: -120px; width: 200px; animation: wind-blow 2.8s linear infinite; animation-delay: 0.8s; }
+.wind-line:nth-child(5) { top: 25%; left: -180px; width: 150px; animation: wind-blow 3.2s linear infinite; animation-delay: 1.2s; }
+.wind-line:nth-child(6) { top: 65%; left: -130px; width: 280px; animation: wind-blow 2.4s linear infinite; animation-delay: 0.4s; }
+.wind-line:nth-child(7) { top: 45%; left: -160px; width: 220px; animation: wind-blow 2.9s linear infinite; animation-delay: 1.0s; }
+
+/* Pollen particles */
+.wind-pollen:nth-of-type(8) { top: 16%; animation: pollen-blow 2.5s linear infinite; animation-delay: 0.2s; }
+.wind-pollen:nth-of-type(9) { top: 36%; animation: pollen-blow 3.0s linear infinite; animation-delay: 0.7s; }
+.wind-pollen:nth-of-type(10) { top: 56%; animation: pollen-blow 2.2s linear infinite; animation-delay: 0.4s; }
+.wind-pollen:nth-of-type(11) { top: 76%; animation: pollen-blow 2.8s linear infinite; animation-delay: 1.0s; }
+.wind-pollen:nth-of-type(12) { top: 46%; animation: pollen-blow 2.9s linear infinite; animation-delay: 1.2s; }
+
+
+@keyframes wind-blow {
+  0% {
+    transform: translateX(0);
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.8;
+  }
+  80% {
+    opacity: 0.8;
+  }
+  100% {
+    transform: translateX(600px); /* Move further across the container */
+    opacity: 0;
+  }
+}
+
+@keyframes pollen-blow {
+  0% {
+    left: -10px;
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    left: 100%;
+    opacity: 0;
+  }
 }
 
 .garden-grid {
@@ -113,6 +197,11 @@ body {
   box-shadow: inset 0 3px 6px rgba(0,0,0,0.4);
 }
 
+.garden-plot.chemical-soil {
+  background-color: var(--chemical-soil-color);
+  border-color: #5a4a3a;
+}
+
 .garden-plot.fertilized::after {
   content: '✨';
   position: absolute;
@@ -128,17 +217,34 @@ body {
 }
 
 .plant {
-  animation: grow 0.5s ease-out;
+  animation: sprout-pop 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275);
   line-height: 1;
+  transition: transform 0.3s ease-out;
+}
+
+.plant.plant-large {
+  animation: fertilizer-pop 2s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
 }
 
 .garden-plot.combining .plant {
   animation: pulse 0.8s ease-in-out;
 }
 
+@keyframes sprout-pop {
+  0% { transform: scale(0) translateY(10px); }
+  60% { transform: scale(1.2) translateY(-5px); }
+  100% { transform: scale(1) translateY(0); }
+}
+
 @keyframes grow {
   from { transform: scale(0); }
   to { transform: scale(1); }
+}
+
+@keyframes fertilizer-pop {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.7); }
+  100% { transform: scale(1.5); }
 }
 
 @keyframes pulse {
@@ -239,8 +345,9 @@ body {
     flex-direction: row;
     justify-content: flex-start;
     padding: 0.75rem;
-    font-size: 1rem;
+    font-size: 0.9rem;
     gap: 0.5rem;
+    line-height: 1.2;
 }
 
 .tools-panel {
@@ -249,9 +356,9 @@ body {
     transform: translateY(-50%);
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: 0.5rem;
     padding: 1rem;
-    width: 160px;
+    width: 180px;
 }
 
 .inventory-panel {
@@ -404,6 +511,88 @@ body {
   font-weight: bold;
 }
 
+/* Bees Animation */
+.bees-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 15;
+  overflow: hidden;
+}
+
+.bee {
+  position: absolute;
+  font-size: 2.5rem;
+  filter: drop-shadow(2px 4px 4px rgba(0,0,0,0.2));
+  transition: transform 0.5s linear;
+}
+
+.bee.dying {
+  animation: bee-fall 3.5s ease-in forwards !important;
+}
+
+.bee-1 {
+  top: 0;
+  left: 0;
+  animation: bee-fly-xy-1 12s linear infinite;
+}
+
+.bee-2 {
+  bottom: 0;
+  right: 0;
+  animation: bee-fly-xy-2 15s linear infinite;
+}
+
+.bee-3 {
+  top: 50%;
+  left: 50%;
+  animation: bee-fly-xy-3 20s ease-in-out infinite;
+}
+
+@keyframes bee-fly-xy-1 {
+  0% { left: 10%; top: 20%; transform: scaleX(-1); }
+  25% { left: 40%; top: 10%; transform: scaleX(-1); }
+  49% { left: 80%; top: 30%; transform: scaleX(-1); }
+  50% { left: 80%; top: 30%; transform: scaleX(1); }
+  75% { left: 40%; top: 60%; transform: scaleX(1); }
+  99% { left: 10%; top: 20%; transform: scaleX(1); }
+  100% { left: 10%; top: 20%; transform: scaleX(-1); }
+}
+
+@keyframes bee-fly-xy-2 {
+  0% { right: 10%; bottom: 20%; transform: scaleX(1); }
+  30% { right: 50%; bottom: 60%; transform: scaleX(1); }
+  49% { right: 90%; bottom: 40%; transform: scaleX(1); }
+  50% { right: 90%; bottom: 40%; transform: scaleX(-1); }
+  80% { right: 40%; bottom: 10%; transform: scaleX(-1); }
+  100% { right: 10%; bottom: 20%; transform: scaleX(-1); }
+}
+
+@keyframes bee-fly-xy-3 {
+    0% { left: 50%; top: 50%; transform: translate(-50%, -50%) scaleX(-1); }
+    25% { left: 70%; top: 40%; transform: translate(-50%, -50%) scaleX(-1); }
+    50% { left: 50%; top: 30%; transform: translate(-50%, -50%) scaleX(1); }
+    75% { left: 30%; top: 40%; transform: translate(-50%, -50%) scaleX(1); }
+    100% { left: 50%; top: 50%; transform: translate(-50%, -50%) scaleX(-1); }
+}
+
+@keyframes bee-fall {
+  0% {
+    opacity: 1;
+    transform: translateY(0) rotate(0deg);
+  }
+  20% {
+    transform: translateY(-20px) rotate(180deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(100vh) rotate(180deg);
+  }
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
   .header {
@@ -431,7 +620,7 @@ body {
       bottom: 1.5rem;
       left: 1.5rem;
       transform: none;
-      width: 140px;
+      width: 160px;
   }
   .seed-panel {
       display: none; /* Hide seeds on tablets to avoid clutter */
