@@ -21,9 +21,13 @@ const PLANT_CONFIG: Record<PlantType, PlantInfo> = {
 type PlantStage = 'sprout' | 'grown';
 
 interface PlantState {
+  instanceId: string;
   type: PlantType;
   stage: PlantStage;
   phenotype: string;
+  parentIds: string[];
+  isSmall?: boolean;
+  isHybrid?: boolean;
 }
 
 interface PlotState {
@@ -53,6 +57,8 @@ const App = () => {
   // Modals state
   const [showReproductionMessage, setShowReproductionMessage] = useState(false);
   const [showCornReproductionMessage, setShowCornReproductionMessage] = useState(false);
+  const [showInbreedingMessage, setShowInbreedingMessage] = useState(false);
+  const [showHeterosisMessage, setShowHeterosisMessage] = useState(false);
   const [showCornHint, setShowCornHint] = useState(false);
   const [showBeeDeathMessage, setShowBeeDeathMessage] = useState(false);
 
@@ -164,16 +170,45 @@ const App = () => {
                 // Find an empty spot
                 const emptySpotId = findEmptySpot(lastGrownId, garden);
                 
-                if (emptySpotId !== null) {
+                if (emptySpotId !== null && grownPlot.plant && partner.plant) {
+                    const plantA = grownPlot.plant;
+                    const plantB = partner.plant;
+
+                    let isInbreeding = false;
+                    let isHybrid = false;
+
+                    // Logic Priority 1: Heterosis (Two small parents -> Big Hybrid)
+                    if (plantA.isSmall && plantB.isSmall) {
+                        isHybrid = true;
+                        isInbreeding = false;
+                    } else {
+                         // Logic Priority 2: Inbreeding (Parent-Child -> Small)
+                        const isAparentOfB = plantB.parentIds?.includes(plantA.instanceId);
+                        const isBparentOfA = plantA.parentIds?.includes(plantB.instanceId);
+                        isInbreeding = isAparentOfB || isBparentOfA;
+                    }
+
                     setGarden(prev => {
                         const newGarden = [...prev];
-                        newGarden[emptySpotId].plant = createPlant('Milho');
+                        // Generate the new plant, inheriting parents' IDs
+                        newGarden[emptySpotId].plant = createPlant(
+                            'Milho', 
+                            [plantA.instanceId, plantB.instanceId], 
+                            isInbreeding,
+                            isHybrid
+                        );
                         return newGarden;
                     });
                     
                     // 4. Wait for the new sprout animation to play before showing message
                     setTimeout(() => {
-                        setShowCornReproductionMessage(true);
+                        if (isHybrid) {
+                             setShowHeterosisMessage(true);
+                        } else if (isInbreeding) {
+                            setShowInbreedingMessage(true);
+                        } else {
+                            setShowCornReproductionMessage(true);
+                        }
                     }, 1500);
                 }
             }, 4000); // 4 seconds wind duration
@@ -205,15 +240,16 @@ const App = () => {
 
         if (matchingNeighborId !== null) {
             // Found a mate, animate parents and spawn child
+            const neighborPlant = garden[matchingNeighborId].plant;
             setAnimatingPlots([lastGrownId, matchingNeighborId]);
             
             setTimeout(() => {
                 setAnimatingPlots([]);
                 const emptySpotId = findEmptySpot(lastGrownId, garden); // Search near parent first
-                if (emptySpotId !== null) {
+                if (emptySpotId !== null && grownPlot.plant && neighborPlant) {
                     setGarden(prev => {
                         const newGarden = [...prev];
-                        newGarden[emptySpotId].plant = createPlant(plantType);
+                        newGarden[emptySpotId].plant = createPlant(plantType, [grownPlot.plant!.instanceId, neighborPlant.instanceId]);
                         return newGarden;
                     });
                     setShowReproductionMessage(true);
@@ -250,9 +286,17 @@ const App = () => {
     return anyEmpty ? anyEmpty.id : null;
   };
 
-  const createPlant = (type: PlantType): PlantState => {
+  const createPlant = (type: PlantType, parentIds: string[] = [], isSmall: boolean = false, isHybrid: boolean = false): PlantState => {
     const phenotype = PLANT_CONFIG[type].phenotype;
-    return { type, stage: 'sprout', phenotype };
+    return { 
+        instanceId: Math.random().toString(36).substring(2, 9),
+        type, 
+        stage: 'sprout', 
+        phenotype, 
+        parentIds,
+        isSmall,
+        isHybrid
+    };
   };
 
   const growPlant = (plotId: number) => {
@@ -383,7 +427,7 @@ const App = () => {
               aria-label={`Lote de terra ${plot.id + 1}. ${plot.plant ? `Contém ${plot.plant.phenotype}` : 'Vazio'}`}
             >
               {plot.plant && (
-                <div className={`plant ${plot.fertilizer ? 'plant-large' : ''}`}>
+                <div className={`plant ${plot.fertilizer ? 'plant-large' : ''} ${plot.plant.isSmall ? 'plant-small' : ''} ${plot.plant.isHybrid ? 'plant-hybrid' : ''}`}>
                   {plot.plant.stage === 'sprout' ? '🌱' : plot.plant.phenotype}
                 </div>
               )}
@@ -510,6 +554,28 @@ const App = () => {
                 <h2>Polinização do Milho</h2>
                 <p>O cruzamento do milho ocorre principalmente pela polinização cruzada, impulsionada pelo vento, que transporta grãos de pólen das flores masculinas (pendões) para as flores femininas (cabelos da espiga).</p>
                 <button className="ok-button" onClick={() => setShowCornReproductionMessage(false)}>Entendi</button>
+            </div>
+        </div>
+      )}
+
+      {showInbreedingMessage && (
+        <div className="modal-overlay" onClick={() => setShowInbreedingMessage(false)}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                <h2>Depressão Endogâmica 🧬</h2>
+                <p><strong>Sua planta diminuiu!</strong> O endocruzamento faz aumentar a homozigose e, consequentemente, diminuir a heterozigose na população.</p>
+                <p>Isso pode levar a <strong>Depressão endogâmica</strong>: A manifestação de genes recessivos deletérios, que geralmente resultam em alguma degeneração no vigor, na produtividade ou na capacidade de sobrevivência da planta.</p>
+                <button className="ok-button" onClick={() => setShowInbreedingMessage(false)}>Entendi</button>
+            </div>
+        </div>
+      )}
+
+       {showHeterosisMessage && (
+        <div className="modal-overlay" onClick={() => setShowHeterosisMessage(false)}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                <h2>Vigor Híbrido (Heterose) 🚀</h2>
+                <p><strong>Sua planta cresceu mais forte!</strong></p>
+                <p>As linhagens endocruzadas puras servem como "blocos de construção" para a criação de híbridos de milho. Quando duas linhagens endogâmicas diferentes são cruzadas, o resultado é um híbrido F1 que exibe o fenômeno da heterose (vigor híbrido), superando as características de ambos os pais em termos de produtividade e resistência.</p>
+                <button className="ok-button" onClick={() => setShowHeterosisMessage(false)}>Incrível!</button>
             </div>
         </div>
       )}

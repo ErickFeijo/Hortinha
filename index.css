@@ -257,6 +257,25 @@ body {
   animation: fertilizer-pop 2s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
 }
 
+.plant.plant-small {
+  transform: scale(0.7);
+  animation-name: sprout-pop-small;
+}
+
+.plant.plant-small.plant-large {
+  animation-name: fertilizer-pop-small;
+}
+
+.plant.plant-hybrid {
+  transform: scale(1.3);
+  animation-name: sprout-pop-hybrid;
+}
+
+.plant.plant-hybrid.plant-large {
+  animation-name: fertilizer-pop-hybrid;
+}
+
+
 .garden-plot.combining .plant {
   animation: pulse 0.8s ease-in-out;
 }
@@ -265,6 +284,18 @@ body {
   0% { transform: scale(0) translateY(10px); }
   60% { transform: scale(1.2) translateY(-5px); }
   100% { transform: scale(1) translateY(0); }
+}
+
+@keyframes sprout-pop-small {
+  0% { transform: scale(0) translateY(10px); }
+  60% { transform: scale(0.9) translateY(-5px); }
+  100% { transform: scale(0.7) translateY(0); }
+}
+
+@keyframes sprout-pop-hybrid {
+  0% { transform: scale(0) translateY(10px); }
+  60% { transform: scale(1.5) translateY(-5px); }
+  100% { transform: scale(1.3) translateY(0); }
 }
 
 @keyframes grow {
@@ -276,6 +307,18 @@ body {
   0% { transform: scale(1); }
   50% { transform: scale(1.7); }
   100% { transform: scale(1.5); }
+}
+
+@keyframes fertilizer-pop-small {
+  0% { transform: scale(0.7); }
+  50% { transform: scale(1.2); }
+  100% { transform: scale(1.05); }
+}
+
+@keyframes fertilizer-pop-hybrid {
+  0% { transform: scale(1.3); }
+  50% { transform: scale(2.0); }
+  100% { transform: scale(1.8); }
 }
 
 @keyframes pulse {
