@@ -86,6 +86,37 @@ body {
   position: relative;
 }
 
+/* Connection Overlay */
+.connection-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 6; /* Above wind, below UI */
+  /* Compensate for padding of garden-container */
+  top: 1.5rem;
+  left: 1.5rem;
+  width: calc(100% - 3rem);
+  height: calc(100% - 3rem);
+}
+
+.connection-line {
+  stroke: #FFD700;
+  stroke-width: 0.08;
+  stroke-linecap: round;
+  stroke-dasharray: 0.2;
+  animation: dash-animation 1s linear infinite;
+  filter: drop-shadow(0 2px 2px rgba(0,0,0,0.5));
+}
+
+@keyframes dash-animation {
+  to {
+    stroke-dashoffset: -0.4;
+  }
+}
+
 /* Wind Effect */
 .wind-overlay {
   position: absolute;

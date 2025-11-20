@@ -33,6 +33,11 @@ interface PlotState {
   fertilizer: FertilizerType;
 }
 
+interface CornConnection {
+    from: number;
+    to: number;
+}
+
 const App = () => {
   const [selectedTool, setSelectedTool] = useState<PlantType | ToolType | null>(null);
   const [garden, setGarden] = useState<PlotState[]>(
@@ -54,11 +59,18 @@ const App = () => {
   // Animation state
   const [beeState, setBeeState] = useState<BeeState>('hidden');
   const [isWindy, setIsWindy] = useState(false);
+  const [cornConnection, setCornConnection] = useState<CornConnection | null>(null);
 
   const cornTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const hasSunflowers = garden.some(plot => plot.plant?.type === 'Girassol' && plot.plant.stage === 'grown');
   const hasPesticides = garden.some(plot => plot.fertilizer === 'chemical');
+
+  // Derived state for Corn Hint Effect
+  const cornPlots = garden.filter(plot => plot.plant?.type === 'Milho');
+  const cornCount = cornPlots.length;
+  // Check if there is exactly 1 corn and it is fully grown
+  const isSingleGrownCorn = cornCount === 1 && cornPlots[0].plant?.stage === 'grown';
 
   // Effect 1: State Transitions based on Garden Conditions (Bees)
   useEffect(() => {
@@ -92,17 +104,16 @@ const App = () => {
 
   // Effect 3: Corn Hint Timer
   useEffect(() => {
-    const cornCount = garden.filter(plot => plot.plant?.type === 'Milho').length;
-
-    if (cornCount === 1) {
-        // If exactly one corn exists and timer isn't running, start it
+    if (isSingleGrownCorn) {
+        // If exactly one grown corn exists and timer isn't running, start it
         if (!cornTimeoutRef.current) {
             cornTimeoutRef.current = setTimeout(() => {
                 setShowCornHint(true);
-            }, 60000); // 1 minute
+                cornTimeoutRef.current = null;
+            }, 30000); // 30 seconds
         }
     } else {
-        // If 0 or >1 corn, clear timer and hide hint
+        // If condition not met (0 corn, >1 corn, or 1 sprout), clear timer
         if (cornTimeoutRef.current) {
             clearTimeout(cornTimeoutRef.current);
             cornTimeoutRef.current = null;
@@ -117,7 +128,7 @@ const App = () => {
             clearTimeout(cornTimeoutRef.current);
         }
     };
-  }, [garden]);
+  }, [isSingleGrownCorn, cornCount]);
 
   // Effect 4: Reproduction Logic (Triggered when a plant finishes growing)
   useEffect(() => {
@@ -133,15 +144,22 @@ const App = () => {
 
     if (plantType === 'Milho') {
         // CORN LOGIC: Global check (no adjacency needed)
-        const otherCorn = garden.find(p => p.id !== lastGrownId && p.plant?.type === 'Milho' && p.plant.stage === 'grown');
+        const otherCorns = garden.filter(p => p.id !== lastGrownId && p.plant?.type === 'Milho' && p.plant.stage === 'grown');
 
-        if (otherCorn) {
-            // 1. Trigger Wind
+        if (otherCorns.length > 0) {
+            // Randomly select a partner if more than one exists
+            const partner = otherCorns[Math.floor(Math.random() * otherCorns.length)];
+
+            // 1. Set connection visual
+            setCornConnection({ from: partner.id, to: lastGrownId });
+
+            // 2. Trigger Wind
             setIsWindy(true);
 
-            // 2. Wait for wind animation to finish, then reproduce
+            // 3. Wait for wind animation to finish, then reproduce
             setTimeout(() => {
                 setIsWindy(false);
+                setCornConnection(null); // Clear connection arrows
                 
                 // Find an empty spot
                 const emptySpotId = findEmptySpot(lastGrownId, garden);
@@ -153,7 +171,7 @@ const App = () => {
                         return newGarden;
                     });
                     
-                    // 3. Wait for the new sprout animation to play before showing message
+                    // 4. Wait for the new sprout animation to play before showing message
                     setTimeout(() => {
                         setShowCornReproductionMessage(true);
                     }, 1500);
@@ -299,6 +317,14 @@ const App = () => {
     });
   }, [selectedTool]);
 
+  // Helper to get coordinates for SVG line
+  const getCoordinates = (index: number) => {
+    const col = index % 4;
+    const row = Math.floor(index / 4);
+    // Return center of the cell (0.5 to 3.5 range)
+    return { x: col + 0.5, y: row + 0.5 };
+  };
+
   return (
     <div className="app-container">
       <header className="header">
@@ -327,6 +353,25 @@ const App = () => {
                 <div className="wind-pollen"></div>
             </div>
         )}
+
+        {/* Connection Overlay for Corn */}
+        <svg className="connection-overlay" viewBox="0 0 4 4" preserveAspectRatio="none">
+             <defs>
+                <marker id="arrowhead" markerWidth="5" markerHeight="3.5" refX="4" refY="1.75" orient="auto">
+                    <polygon points="0 0, 5 1.75, 0 3.5" fill="#FFD700" />
+                </marker>
+            </defs>
+            {cornConnection && (
+                <line 
+                    x1={getCoordinates(cornConnection.from).x} 
+                    y1={getCoordinates(cornConnection.from).y} 
+                    x2={getCoordinates(cornConnection.to).x} 
+                    y2={getCoordinates(cornConnection.to).y} 
+                    className="connection-line"
+                    markerEnd="url(#arrowhead)"
+                />
+            )}
+        </svg>
 
         <div className="garden-grid">
           {garden.map(plot => (
