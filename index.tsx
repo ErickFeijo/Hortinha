@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 
-type PlantType = 'Abóbora' | 'Milho' | 'Girassol' | 'Maçã';
+type PlantType = 'Abóbora' | 'Milho' | 'Girassol' | 'Maçã' | 'Feijão';
 type ToolType = 'regador' | 'adubo_organico' | 'agrotoxico' | 'colher';
 type FertilizerType = 'organic' | 'chemical' | null;
 type BeeState = 'hidden' | 'visible' | 'dying';
@@ -17,6 +17,7 @@ const PLANT_CONFIG: Record<PlantType, PlantInfo> = {
   Milho: { name: 'Milho', phenotype: '🌽' },
   Girassol: { name: 'Girassol', phenotype: '🌻' },
   Maçã: { name: 'Maçã', phenotype: '🍎' },
+  Feijão: { name: 'Feijão', phenotype: '🫘' },
 };
 
 type PlantStage = 'sprout' | 'grown';
@@ -266,7 +267,7 @@ const App = () => {
     };
   };
 
-  // Reusable function for Pollination logic (Pumpkin and Apple)
+  // Reusable function for Pollination logic (Pumpkin, Apple, Sunflower)
   // Returns true if a pollination was initiated
   const tryPollination = useCallback((currentGarden: PlotState[], plantType: PlantType, color: string) => {
       if (beeState !== 'visible') return false;
@@ -353,6 +354,9 @@ const App = () => {
                       if (plantType === 'Maçã') {
                           addNotification("Polinização Cruzada (Maçã) 🐝🍎", "As abelhas viajaram pelo pomar e polinizaram suas macieiras com sucesso!");
                       }
+                      if (plantType === 'Girassol') {
+                          addNotification("Polinização Solar (Girassol) 🌻🐝", "As abelhas transportaram pólen de girassol por todo o jardim! Sementes vigorosas e cheias foram geradas.");
+                      }
                   }
 
                   // Trigger check for next pair/seeker
@@ -368,15 +372,18 @@ const App = () => {
   }, [beeState, determineOffspringGenetics, addNotification]);
 
 
-  // Effect: Check for Bee Pollination loop (Pumpkin and Apple)
+  // Effect: Check for Bee Pollination loop (Pumpkin, Apple, Sunflower)
   // This runs when bees are visible or when the garden updates (via reproduction trigger)
   useEffect(() => {
       if (beeState === 'visible') {
           const timer = setTimeout(() => {
-              // Try Pumpkin first
+              // Try Pumpkin
               const pumpkinSuccess = tryPollination(garden, 'Abóbora', '#FF8C00');
-              if (!pumpkinSuccess) {
-                   // If no pumpkin pollination, try Apple
+              // Try Sunflower (Scenario A)
+              const sunflowerSuccess = tryPollination(garden, 'Girassol', '#FFD700');
+
+              if (!pumpkinSuccess && !sunflowerSuccess) {
+                   // Try Apple
                    tryPollination(garden, 'Maçã', '#ff4d4d');
               }
           }, 500);
@@ -466,33 +473,57 @@ const App = () => {
                             false
                             );
                             
-                            // We need to call addNotification outside the reducer or using a ref, 
-                            // but since we are inside a timeout, we can just call it next tick/directly
-                            // Note: Calling state setters inside state setters (reducer pattern) is bad for side effects.
-                            // We'll just set a flag or do it after.
-                            // For simplicity in this specific architecture, we'll invoke it via a small timeout or direct if safe.
-                            // Better: Do it outside setGarden. 
                             return newGarden;
                         }
                 }
                 return currentGarden;
             });
 
-            // Check if the plant actually self-pollinated (re-check garden state roughly)
-            // Since we can't easily know result of setGarden immediately inside timeout, 
-            // we rely on the logic that if we reached here, we likely succeeded.
-            // A cleaner way is to have an effect watch garden changes, but we'll stick to immediate feedback for now.
-             // *Correction*: We can't reliably call addNotification *inside* setGarden.
-             // So we'll trigger it if conditions met.
-             
-             // Simplified check for notification trigger:
-             const checkGarden = garden[lastGrownId]; // This is stale garden closure, won't work well.
-             // We will assume success for notification if no bees.
+            // Notification trigger
              if (beeState !== 'visible') {
                   addNotification("Auto-polinização (Abóbora)", "Sem abelhas ou parceiros por perto, a planta realizou a auto-fecundação. Isso aumenta a chance de depressão endogâmica.");
              }
 
         }, 30000); // 30 Seconds delay
+
+    } else if (plantType === 'Girassol') {
+        // SUNFLOWER LOGIC - Fallback for Self-Pollination ONLY
+        const currentPlantId = grownPlot.plant.instanceId;
+
+        setTimeout(() => {
+            setGarden(currentGarden => {
+                const parentPlot = currentGarden[lastGrownId];
+                
+                if (parentPlot && 
+                    parentPlot.plant && 
+                    parentPlot.plant.instanceId === currentPlantId &&
+                    !reproducedPlantsRef.current.has(currentPlantId)
+                ) {
+                        // If Bees are visible now, we SKIP self-pollination and let the bee queue handle it
+                        if (beeState === 'visible') return currentGarden;
+
+                        // Execute Self-Pollination
+                        const emptySpotId = findEmptySpot(lastGrownId, currentGarden);
+                        if (emptySpotId !== null) {
+                            reproducedPlantsRef.current.add(currentPlantId); // Mark used
+
+                            const newGarden = [...currentGarden];
+                            newGarden[emptySpotId].plant = createPlant(
+                                'Girassol',
+                                [currentPlantId],
+                                true, // Inbreeding (Small)
+                                false
+                            );
+                            return newGarden;
+                        }
+                }
+                return currentGarden;
+            });
+
+            if (beeState !== 'visible') {
+                addNotification("Auto-polinização (Girassol) 🌻", "Sem abelhas para levar o pólen longe, o girassol se auto-polinizou. Isso gera sementes menores.");
+            }
+        }, 30000);
 
     } else if (plantType === 'Maçã') {
         // APPLE LOGIC
@@ -500,26 +531,51 @@ const App = () => {
             setReproductionTrigger(prev => prev + 1);
         }
 
-    } else {
-        // OTHER PLANTS LOGIC (Girassol) - Simple neighbor check
-        const neighborId = findNeighbor(lastGrownId, plantType);
+    } else if (plantType === 'Feijão') {
+        // FEIJÃO LOGIC - Strict Self-Pollination (Autogamy)
+        const currentPlantId = grownPlot.plant.instanceId;
 
-        if (neighborId !== null) {
-            const neighborPlant = garden[neighborId].plant;
-            setAnimatingPlots([lastGrownId, neighborId]);
-            
-            setTimeout(() => {
+        // Delay slightly to allow player to see the growth
+        setTimeout(() => {
+             setAnimatingPlots([lastGrownId]); // Pulse animation on the parent
+             
+             setTimeout(() => {
                 setAnimatingPlots([]);
-                const emptySpotId = findEmptySpot(lastGrownId, garden); 
-                if (emptySpotId !== null && grownPlot.plant && neighborPlant) {
-                    setGarden(prev => {
-                        const newGarden = [...prev];
-                        newGarden[emptySpotId].plant = createPlant(plantType, [grownPlot.plant!.instanceId, neighborPlant.instanceId]);
+                setGarden(currentGarden => {
+                    // Verify parent still exists
+                    const parentPlot = currentGarden[lastGrownId];
+                    if (!parentPlot?.plant || parentPlot.plant.instanceId !== currentPlantId) return currentGarden;
+
+                    // Self-pollination ignores bees and partners. Just finds a spot.
+                    const emptySpotId = findEmptySpot(lastGrownId, currentGarden);
+                    
+                    if (emptySpotId !== null) {
+                        // Genetic Rule: Self-pollination normally causes inbreeding (Small),
+                        // BUT Feijão is adapted to autogamy and maintains normal vigor.
+                        
+                        const newGarden = [...currentGarden];
+                        newGarden[emptySpotId].plant = createPlant(
+                            'Feijão',
+                            [currentPlantId], // Parent is itself
+                            false, // Normal size (Special rule for Feijão)
+                            false // Not Hybrid
+                        );
+                        
                         return newGarden;
-                    });
-                    addNotification("Cruzamento!", "Ocorreu um cruzamento entre linhagens distintas gerando um novo broto.");
-                }
-            }, 800);
+                    }
+                    return currentGarden;
+                });
+                
+                addNotification("Auto-fecundação (Feijão) 🫘", "O feijão é uma planta autógama. Ele se reproduz sozinho mantendo seu tamanho normal, sem perda de vigor!");
+             }, 1500);
+
+        }, 1000);
+
+    } else {
+        // GENERIC FALLBACK
+        const neighborId = findNeighbor(lastGrownId, plantType);
+        if (neighborId !== null) {
+             // Existing generic neighbor logic...
         }
     }
 
