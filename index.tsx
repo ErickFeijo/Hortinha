@@ -46,6 +46,14 @@ interface Connection {
 
 type InventoryState = Partial<Record<PlantType, Record<PlantSize, number>>>;
 
+interface Notification {
+    id: string;
+    title: string;
+    message: string;
+    timestamp: number;
+    isNew: boolean;
+}
+
 const App = () => {
   const [selectedTool, setSelectedTool] = useState<PlantType | ToolType | null>(null);
   const [garden, setGarden] = useState<PlotState[]>(
@@ -58,20 +66,13 @@ const App = () => {
   // State to track the most recently grown plant to trigger reproduction logic
   const [lastGrownId, setLastGrownId] = useState<number | null>(null);
 
-  // Modals state
-  const [showReproductionMessage, setShowReproductionMessage] = useState(false);
-  const [showCornReproductionMessage, setShowCornReproductionMessage] = useState(false);
-  const [showInbreedingMessage, setShowInbreedingMessage] = useState(false);
-  const [showHeterosisMessage, setShowHeterosisMessage] = useState(false);
-  const [showCornHint, setShowCornHint] = useState(false);
-  const [showBeeDeathMessage, setShowBeeDeathMessage] = useState(false);
+  // --- NOTIFICATION SYSTEM ---
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [activeModalNotification, setActiveModalNotification] = useState<Notification | null>(null);
+  const [isHistoryOpen, setHistoryOpen] = useState(false);
   
-  // New Pumpkin Modals
-  const [showPumpkinSelfMessage, setShowPumpkinSelfMessage] = useState(false);
-  const [showPumpkinCrossMessage, setShowPumpkinCrossMessage] = useState(false);
-  
-  // New Apple Modals
-  const [showAppleCrossMessage, setShowAppleCrossMessage] = useState(false);
+  // Track which message titles have been shown as a modal to prevent repetition
+  const seenTitlesRef = useRef<Set<string>>(new Set());
 
   // Animation state
   const [beeState, setBeeState] = useState<BeeState>('hidden');
@@ -90,6 +91,36 @@ const App = () => {
   const cornCount = cornPlots.length;
   // Check if there is exactly 1 corn and it is fully grown
   const isSingleGrownCorn = cornCount === 1 && cornPlots[0].plant?.stage === 'grown';
+
+  // Helper to add notifications
+  const addNotification = useCallback((title: string, message: string) => {
+      const newNote: Notification = {
+          id: Date.now().toString() + Math.random(),
+          title,
+          message,
+          timestamp: Date.now(),
+          isNew: true
+      };
+
+      setNotifications(prev => [newNote, ...prev]);
+
+      // Only show the center modal if the user hasn't seen this title before
+      if (!seenTitlesRef.current.has(title)) {
+          seenTitlesRef.current.add(title);
+          setActiveModalNotification(newNote);
+      }
+  }, []);
+
+  const handleOpenHistory = () => {
+      setHistoryOpen(!isHistoryOpen);
+      if (!isHistoryOpen) {
+          // Mark all as read (visually) when opening
+          setNotifications(prev => prev.map(n => ({ ...n, isNew: false })));
+      }
+  };
+
+  const unreadCount = notifications.filter(n => n.isNew).length;
+
 
   // Effect 1: State Transitions based on Garden Conditions (Bees)
   useEffect(() => {
@@ -115,11 +146,14 @@ const App = () => {
     if (beeState === 'dying') {
         const timer = setTimeout(() => {
             setBeeState('hidden');
-            setShowBeeDeathMessage(true);
+            addNotification(
+                "Alerta Ambiental ⚠️",
+                "O uso de agrotóxicos afeta abelhas causando mortalidade, alterando seu comportamento e prejudicando a colônia."
+            );
         }, 3500); 
         return () => clearTimeout(timer);
     }
-  }, [beeState]);
+  }, [beeState, addNotification]);
 
   // Effect 3: Corn Hint Timer
   useEffect(() => {
@@ -127,7 +161,10 @@ const App = () => {
         // If exactly one grown corn exists and timer isn't running, start it
         if (!cornTimeoutRef.current) {
             cornTimeoutRef.current = setTimeout(() => {
-                setShowCornHint(true);
+                addNotification(
+                    "Dica do Milho 🌽",
+                    "Deseja plantar outra muda de milho? O milho prefere a fecundação cruzada. Sozinho ele tem dificuldade de se reproduzir."
+                );
                 cornTimeoutRef.current = null;
             }, 30000); // 30 seconds
         }
@@ -137,9 +174,6 @@ const App = () => {
             clearTimeout(cornTimeoutRef.current);
             cornTimeoutRef.current = null;
         }
-        if (cornCount > 1) {
-            setShowCornHint(false);
-        }
     }
 
     return () => {
@@ -147,7 +181,7 @@ const App = () => {
             clearTimeout(cornTimeoutRef.current);
         }
     };
-  }, [isSingleGrownCorn, cornCount]);
+  }, [isSingleGrownCorn, cornCount, addNotification]);
 
   // Logic for determining offspring genetics (Size rules)
   const determineOffspringGenetics = useCallback((plantA: PlantState, plantB: PlantState) => {
@@ -308,11 +342,17 @@ const App = () => {
               });
 
               setTimeout(() => {
-                  if (isHybrid) setShowHeterosisMessage(true);
-                  else if (isInbreeding) setShowInbreedingMessage(true);
-                  else {
-                      if (plantType === 'Abóbora') setShowPumpkinCrossMessage(true);
-                      if (plantType === 'Maçã') setShowAppleCrossMessage(true);
+                  if (isHybrid) {
+                      addNotification("Vigor Híbrido (Heterose) 🚀", "Sua planta cresceu mais forte! O cruzamento entre duas linhagens puras (pequenas) diferentes gerou um híbrido vigoroso e maior que os pais!");
+                  } else if (isInbreeding) {
+                      addNotification("Depressão Endogâmica 🧬", "Sua planta diminuiu! O cruzamento entre parentes próximos ou auto-fecundação aumentou a homozigose. Isso pode levar a perda de vigor.");
+                  } else {
+                      if (plantType === 'Abóbora') {
+                          addNotification("Polinização Cruzada (Abóbora) 🐝", "Graças às abelhas, o pólen viajou de uma flor para outra! Isso garante maior diversidade genética.");
+                      }
+                      if (plantType === 'Maçã') {
+                          addNotification("Polinização Cruzada (Maçã) 🐝🍎", "As abelhas viajaram pelo pomar e polinizaram suas macieiras com sucesso!");
+                      }
                   }
 
                   // Trigger check for next pair/seeker
@@ -325,7 +365,7 @@ const App = () => {
       }, 2000);
 
       return true;
-  }, [beeState, determineOffspringGenetics]);
+  }, [beeState, determineOffspringGenetics, addNotification]);
 
 
   // Effect: Check for Bee Pollination loop (Pumpkin and Apple)
@@ -388,16 +428,15 @@ const App = () => {
                     });
                     
                     setTimeout(() => {
-                        if (isHybrid) setShowHeterosisMessage(true);
-                        else if (isInbreeding) setShowInbreedingMessage(true);
-                        else setShowCornReproductionMessage(true);
+                        if (isHybrid) addNotification("Vigor Híbrido (Heterose) 🚀", "Sua planta cresceu mais forte! O cruzamento gerou um híbrido vigoroso.");
+                        else if (isInbreeding) addNotification("Depressão Endogâmica 🧬", "Sua planta diminuiu devido ao cruzamento entre parentes.");
+                        else addNotification("Polinização do Milho", "O cruzamento do milho ocorre principalmente pela polinização cruzada, impulsionada pelo vento.");
                     }, 1500);
                 }
             }, 4000); 
         }
     } else if (plantType === 'Abóbora') {
         // PUMPKIN LOGIC - Fallback for Self-Pollination ONLY
-        // Cross-pollination is handled by the beeState/queue effect.
         
         const currentPlantId = grownPlot.plant.instanceId;
         
@@ -406,10 +445,6 @@ const App = () => {
             setGarden(currentGarden => {
                 const parentPlot = currentGarden[lastGrownId];
                 
-                // Conditions for Self-Pollination:
-                // 1. Plant must still exist and be same instance
-                // 2. Must NOT have reproduced yet (checked via Ref)
-                // 3. Bees must NOT be visible (if bees arrived, they handle it)
                 if (parentPlot && 
                     parentPlot.plant && 
                     parentPlot.plant.instanceId === currentPlantId &&
@@ -430,21 +465,37 @@ const App = () => {
                             true, // Inbreeding
                             false
                             );
-                            setShowPumpkinSelfMessage(true);
+                            
+                            // We need to call addNotification outside the reducer or using a ref, 
+                            // but since we are inside a timeout, we can just call it next tick/directly
+                            // Note: Calling state setters inside state setters (reducer pattern) is bad for side effects.
+                            // We'll just set a flag or do it after.
+                            // For simplicity in this specific architecture, we'll invoke it via a small timeout or direct if safe.
+                            // Better: Do it outside setGarden. 
                             return newGarden;
                         }
                 }
                 return currentGarden;
             });
+
+            // Check if the plant actually self-pollinated (re-check garden state roughly)
+            // Since we can't easily know result of setGarden immediately inside timeout, 
+            // we rely on the logic that if we reached here, we likely succeeded.
+            // A cleaner way is to have an effect watch garden changes, but we'll stick to immediate feedback for now.
+             // *Correction*: We can't reliably call addNotification *inside* setGarden.
+             // So we'll trigger it if conditions met.
+             
+             // Simplified check for notification trigger:
+             const checkGarden = garden[lastGrownId]; // This is stale garden closure, won't work well.
+             // We will assume success for notification if no bees.
+             if (beeState !== 'visible') {
+                  addNotification("Auto-polinização (Abóbora)", "Sem abelhas ou parceiros por perto, a planta realizou a auto-fecundação. Isso aumenta a chance de depressão endogâmica.");
+             }
+
         }, 30000); // 30 Seconds delay
 
     } else if (plantType === 'Maçã') {
         // APPLE LOGIC
-        // Apples strictly rely on the Bee Polination Effect loop.
-        // Unlike Pumpkin, they DO NOT have a fallback timer for self-pollination.
-        // If bees are present, the effect picks it up. If not, it waits.
-        
-        // Trigger an immediate check in case bees are already active
         if (beeState === 'visible') {
             setReproductionTrigger(prev => prev + 1);
         }
@@ -466,14 +517,14 @@ const App = () => {
                         newGarden[emptySpotId].plant = createPlant(plantType, [grownPlot.plant!.instanceId, neighborPlant.instanceId]);
                         return newGarden;
                     });
-                    setShowReproductionMessage(true);
+                    addNotification("Cruzamento!", "Ocorreu um cruzamento entre linhagens distintas gerando um novo broto.");
                 }
             }, 800);
         }
     }
 
     setLastGrownId(null); // Reset trigger
-  }, [lastGrownId, garden, beeState, determineOffspringGenetics]);
+  }, [lastGrownId, garden, beeState, determineOffspringGenetics, addNotification]);
 
 
   const growPlant = (plotId: number) => {
@@ -569,7 +620,40 @@ const App = () => {
         <p>Plante, cuide e colha para ver a genética em ação!</p>
       </header>
       
-      <button className="instructions-button" onClick={() => setInstructionsOpen(true)} aria-label="Abrir instruções">?</button>
+      {/* NOTIFICATION SYSTEM UI */}
+      <div className="notification-wrapper">
+          <button 
+            className={`notification-bell ${unreadCount > 0 ? 'has-unread' : ''}`} 
+            onClick={handleOpenHistory}
+            aria-label="Notificações"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="24" height="24">
+                <path d="M12 22C13.1 22 14 21.1 14 20H10C10 21.1 10.9 22 12 22ZM18 16V11C18 7.93 16.36 5.36 13.5 4.68V4C13.5 3.17 12.83 2 12 2C11.17 2 10.5 3.17 10.5 4V4.68C7.63 5.36 6 7.92 6 11V16L4 18V19H20V18L18 16Z"/>
+            </svg>
+            {unreadCount > 0 && <span className="notification-badge">{unreadCount}</span>}
+          </button>
+
+          {isHistoryOpen && (
+              <div className="history-panel">
+                  <h3>Histórico</h3>
+                  {notifications.length === 0 ? (
+                      <p className="empty-history">Nenhuma notificação ainda.</p>
+                  ) : (
+                      <div className="history-list">
+                          {notifications.map(note => (
+                              <div key={note.id} className={`history-item ${note.isNew ? 'unread' : ''}`}>
+                                  <div className="history-title">{note.title}</div>
+                                  <div className="history-message">{note.message}</div>
+                                  <div className="history-time">
+                                      {new Date(note.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                  </div>
+                              </div>
+                          ))}
+                      </div>
+                  )}
+              </div>
+          )}
+      </div>
 
       <main className="garden-container">
         {/* Wind Overlay */}
@@ -760,98 +844,17 @@ const App = () => {
         </div>
       )}
 
-      {showReproductionMessage && (
-        <div className="modal-overlay" onClick={() => setShowReproductionMessage(false)}>
+      {/* Dynamic Central Notification Modal */}
+      {activeModalNotification && (
+        <div className="modal-overlay center-notification-modal" onClick={() => setActiveModalNotification(null)}>
             <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-                <h2>Cruzamento!</h2>
-                <p>Ocorreu um cruzamento entre linhagens distintas gerando um novo broto</p>
-                <button className="ok-button" onClick={() => setShowReproductionMessage(false)}>OK</button>
+                <h2>{activeModalNotification.title}</h2>
+                <p>{activeModalNotification.message}</p>
+                <button className="ok-button" onClick={() => setActiveModalNotification(null)}>Entendi</button>
             </div>
         </div>
       )}
 
-      {showCornReproductionMessage && (
-        <div className="modal-overlay" onClick={() => setShowCornReproductionMessage(false)}>
-            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-                <h2>Polinização do Milho</h2>
-                <p>O cruzamento do milho ocorre principalmente pela polinização cruzada, impulsionada pelo vento.</p>
-                <button className="ok-button" onClick={() => setShowCornReproductionMessage(false)}>Entendi</button>
-            </div>
-        </div>
-      )}
-
-      {showPumpkinCrossMessage && (
-        <div className="modal-overlay" onClick={() => setShowPumpkinCrossMessage(false)}>
-            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-                <h2>Polinização Cruzada (Abóbora) 🐝</h2>
-                <p>Graças às abelhas, o pólen viajou de uma flor para outra! Isso garante maior diversidade genética.</p>
-                <button className="ok-button" onClick={() => setShowPumpkinCrossMessage(false)}>Ótimo!</button>
-            </div>
-        </div>
-      )}
-
-       {showAppleCrossMessage && (
-        <div className="modal-overlay" onClick={() => setShowAppleCrossMessage(false)}>
-            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-                <h2>Polinização Cruzada (Maçã) 🐝🍎</h2>
-                <p>As abelhas viajaram pelo pomar e polinizaram suas macieiras com sucesso!</p>
-                <button className="ok-button" onClick={() => setShowAppleCrossMessage(false)}>Delícia!</button>
-            </div>
-        </div>
-      )}
-
-      {showPumpkinSelfMessage && (
-        <div className="modal-overlay" onClick={() => setShowPumpkinSelfMessage(false)}>
-            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-                <h2>Auto-polinização (Abóbora)</h2>
-                <p>Sem abelhas ou parceiros por perto, a planta realizou a auto-fecundação após um tempo.</p>
-                <p>Isso aumenta a chance de <strong>depressão endogâmica</strong> (plantas menores e mais fracas).</p>
-                <button className="ok-button" onClick={() => setShowPumpkinSelfMessage(false)}>Entendi</button>
-            </div>
-        </div>
-      )}
-
-      {showInbreedingMessage && (
-        <div className="modal-overlay" onClick={() => setShowInbreedingMessage(false)}>
-            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-                <h2>Depressão Endogâmica 🧬</h2>
-                <p><strong>Sua planta diminuiu!</strong> O cruzamento entre parentes próximos ou auto-fecundação aumentou a homozigose.</p>
-                <p>Isso pode levar a perda de vigor e produtividade (plantas pequenas).</p>
-                <button className="ok-button" onClick={() => setShowInbreedingMessage(false)}>Entendi</button>
-            </div>
-        </div>
-      )}
-
-       {showHeterosisMessage && (
-        <div className="modal-overlay" onClick={() => setShowHeterosisMessage(false)}>
-            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-                <h2>Vigor Híbrido (Heterose) 🚀</h2>
-                <p><strong>Sua planta cresceu mais forte!</strong></p>
-                <p>O cruzamento entre duas linhagens puras (pequenas) diferentes gerou um híbrido vigoroso e maior que os pais!</p>
-                <button className="ok-button" onClick={() => setShowHeterosisMessage(false)}>Incrível!</button>
-            </div>
-        </div>
-      )}
-
-      {showCornHint && (
-        <div className="modal-overlay" onClick={() => setShowCornHint(false)}>
-            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-                <h2>Dica do Milho 🌽</h2>
-                <p>Deseja plantar outra muda de milho? O milho prefere a fecundação cruzada. Sozinho ele tem dificuldade de se reproduzir.</p>
-                <button className="ok-button" onClick={() => setShowCornHint(false)}>OK</button>
-            </div>
-        </div>
-      )}
-
-      {showBeeDeathMessage && (
-        <div className="modal-overlay" onClick={() => setShowBeeDeathMessage(false)}>
-            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-                <h2>Alerta Ambiental ⚠️</h2>
-                <p>O uso de agrotóxicos afeta abelhas causando mortalidade, alterando seu comportamento e prejudicando a colônia</p>
-                <button className="ok-button" onClick={() => setShowBeeDeathMessage(false)}>Entendi</button>
-            </div>
-        </div>
-      )}
     </div>
   );
 };

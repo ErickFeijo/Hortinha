@@ -74,6 +74,137 @@ body {
   margin-top: 0.25rem;
 }
 
+/* Notification System */
+.notification-wrapper {
+  position: absolute;
+  top: 1.5rem;
+  left: 1.5rem;
+  z-index: 50;
+}
+
+.notification-bell {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background-color: var(--wood-panel);
+  border: 4px solid var(--wood-border);
+  color: var(--text-color);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+  transition: transform 0.2s;
+  position: relative;
+}
+
+.notification-bell:hover {
+  transform: scale(1.1);
+}
+
+.notification-bell.has-unread {
+  animation: swing 1s ease-in-out infinite;
+}
+
+@keyframes swing {
+  0% { transform: rotate(0deg); }
+  25% { transform: rotate(-10deg); }
+  75% { transform: rotate(10deg); }
+  100% { transform: rotate(0deg); }
+}
+
+.notification-badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  background-color: #ff4d4d;
+  color: white;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  font-size: 0.7rem;
+  font-weight: bold;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border: 2px solid var(--wood-panel);
+}
+
+.history-panel {
+  position: absolute;
+  top: 60px;
+  left: 0;
+  background-color: var(--wood-panel);
+  border: 4px solid var(--wood-border);
+  border-radius: 12px;
+  padding: 1rem;
+  width: 300px;
+  box-shadow: var(--shadow);
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.history-panel h3 {
+  font-size: 1.1rem;
+  margin-bottom: 0.75rem;
+  border-bottom: 1px dashed var(--wood-border);
+  padding-bottom: 0.5rem;
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.history-item {
+  background-color: rgba(255, 255, 255, 0.6);
+  padding: 0.5rem;
+  border-radius: 6px;
+  border-left: 3px solid transparent;
+}
+
+.history-item.unread {
+  border-left-color: var(--primary-green);
+  background-color: white;
+}
+
+.history-title {
+  font-weight: 600;
+  font-size: 0.9rem;
+  margin-bottom: 0.2rem;
+}
+
+.history-message {
+  font-size: 0.8rem;
+  color: var(--light-text);
+  line-height: 1.3;
+}
+
+.history-time {
+  font-size: 0.7rem;
+  color: #888;
+  text-align: right;
+  margin-top: 0.25rem;
+}
+
+.empty-history {
+  text-align: center;
+  font-style: italic;
+  color: var(--light-text);
+  font-size: 0.9rem;
+}
+
+.center-notification-modal .modal-content {
+  animation: modal-pop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes modal-pop {
+  from { transform: scale(0.7); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+
 .garden-container {
   padding: 1.5rem;
   background-color: var(--soil-color);
@@ -529,31 +660,6 @@ body {
   text-align: center;
   color: var(--light-text);
   font-style: italic;
-}
-
-.instructions-button {
-  position: fixed;
-  top: 1.5rem;
-  left: 1.5rem;
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  background-color: var(--wood-panel);
-  border: 4px solid var(--wood-border);
-  color: var(--wood-border);
-  font-size: 1.75rem;
-  font-weight: bold;
-  cursor: pointer;
-  z-index: 20;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  box-shadow: var(--shadow);
-  transition: transform 0.2s;
-}
-
-.instructions-button:hover {
-  transform: scale(1.1);
 }
 
 .modal-overlay {
