@@ -541,10 +541,10 @@ body {
   font-size: 1.75rem;
 }
 
-.tool-button .tool-icon {
-  width: 1.5rem;
-  height: 1.5rem;
-  flex-shrink: 0;
+.tool-button .tool-emoji {
+    font-size: 1.5rem;
+    line-height: 1;
+    flex-shrink: 0;
 }
 
 .tool-button {
@@ -790,6 +790,25 @@ body {
   top: 50%;
   left: 50%;
   animation: bee-fly-xy-3 20s ease-in-out infinite;
+}
+
+.bee-4 {
+  top: 10%;
+  right: 30%;
+  animation: bee-fly-xy-2 10s linear infinite reverse;
+}
+
+.bee-5 {
+  bottom: 10%;
+  left: 20%;
+  animation: bee-fly-xy-1 13s linear infinite reverse;
+}
+
+.bee-6 {
+  top: 40%;
+  right: 10%;
+  animation: bee-fly-xy-3 17s ease-in-out infinite;
+  animation-delay: -5s;
 }
 
 @keyframes bee-fly-xy-1 {
