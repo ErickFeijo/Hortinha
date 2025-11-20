@@ -535,7 +535,7 @@ const App = () => {
         // FEIJÃO LOGIC - Strict Self-Pollination (Autogamy)
         const currentPlantId = grownPlot.plant.instanceId;
 
-        // Delay slightly to allow player to see the growth
+        // Delay to simulate self-pollination wait time
         setTimeout(() => {
              setAnimatingPlots([lastGrownId]); // Pulse animation on the parent
              
@@ -569,7 +569,7 @@ const App = () => {
                 addNotification("Auto-fecundação (Feijão) 🫘", "O feijão é uma planta autógama. Ele se reproduz sozinho mantendo seu tamanho normal, sem perda de vigor!");
              }, 1500);
 
-        }, 1000);
+        }, 30000); // 30 Seconds delay
 
     } else {
         // GENERIC FALLBACK

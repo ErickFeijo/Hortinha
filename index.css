@@ -1,3 +1,4 @@
+
 :root {
   --sky-top: #87CEEB;
   --sky-bottom: #a3def5;
@@ -489,7 +490,7 @@ body {
   left: 50%;
   transform: translateX(-50%);
   width: 90%;
-  max-width: 500px;
+  max-width: 650px; /* Increased to fit all seeds in one row */
 }
 
 .seed-panel h2 {
@@ -499,7 +500,7 @@ body {
 
 .seed-selection-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr); /* Changed to 5 to fit all seeds */
   gap: 0.75rem;
 }
 
