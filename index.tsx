@@ -5,6 +5,7 @@ type PlantType = 'Abóbora' | 'Milho' | 'Girassol' | 'Maçã';
 type ToolType = 'regador' | 'adubo_organico' | 'agrotoxico' | 'colher';
 type FertilizerType = 'organic' | 'chemical' | null;
 type BeeState = 'hidden' | 'visible' | 'dying';
+type PlantSize = 'small' | 'normal' | 'large';
 
 interface PlantInfo {
   name: PlantType;
@@ -37,17 +38,20 @@ interface PlotState {
   fertilizer: FertilizerType;
 }
 
-interface CornConnection {
+interface Connection {
     from: number;
     to: number;
+    color?: string;
 }
+
+type InventoryState = Partial<Record<PlantType, Record<PlantSize, number>>>;
 
 const App = () => {
   const [selectedTool, setSelectedTool] = useState<PlantType | ToolType | null>(null);
   const [garden, setGarden] = useState<PlotState[]>(
     Array.from({ length: 16 }, (_, i) => ({ id: i, plant: null, isWatered: false, fertilizer: null }))
   );
-  const [inventory, setInventory] = useState<Record<string, number>>({});
+  const [inventory, setInventory] = useState<InventoryState>({});
   const [isInstructionsOpen, setInstructionsOpen] = useState(true);
   const [animatingPlots, setAnimatingPlots] = useState<number[]>([]);
   
@@ -61,13 +65,22 @@ const App = () => {
   const [showHeterosisMessage, setShowHeterosisMessage] = useState(false);
   const [showCornHint, setShowCornHint] = useState(false);
   const [showBeeDeathMessage, setShowBeeDeathMessage] = useState(false);
+  
+  // New Pumpkin Modals
+  const [showPumpkinSelfMessage, setShowPumpkinSelfMessage] = useState(false);
+  const [showPumpkinCrossMessage, setShowPumpkinCrossMessage] = useState(false);
+  
+  // New Apple Modals
+  const [showAppleCrossMessage, setShowAppleCrossMessage] = useState(false);
 
   // Animation state
   const [beeState, setBeeState] = useState<BeeState>('hidden');
   const [isWindy, setIsWindy] = useState(false);
-  const [cornConnection, setCornConnection] = useState<CornConnection | null>(null);
+  const [activeConnection, setActiveConnection] = useState<Connection | null>(null);
+  const [reproductionTrigger, setReproductionTrigger] = useState(0);
 
   const cornTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reproducedPlantsRef = useRef<Set<string>>(new Set());
 
   const hasSunflowers = garden.some(plot => plot.plant?.type === 'Girassol' && plot.plant.stage === 'grown');
   const hasPesticides = garden.some(plot => plot.fertilizer === 'chemical');
@@ -136,90 +149,33 @@ const App = () => {
     };
   }, [isSingleGrownCorn, cornCount]);
 
-  // Effect 4: Reproduction Logic (Triggered when a plant finishes growing)
-  useEffect(() => {
-    if (lastGrownId === null) return;
+  // Logic for determining offspring genetics (Size rules)
+  const determineOffspringGenetics = useCallback((plantA: PlantState, plantB: PlantState) => {
+      let isInbreeding = false;
+      let isHybrid = false;
 
-    const grownPlot = garden[lastGrownId];
-    if (!grownPlot || !grownPlot.plant || grownPlot.plant.stage !== 'grown') {
-        setLastGrownId(null);
-        return;
-    }
+      // Logic Priority 1: Heterosis (Two small parents -> Big Hybrid)
+      if (plantA.isSmall && plantB.isSmall) {
+          isHybrid = true;
+          isInbreeding = false;
+      } else {
+            // Logic Priority 2: Inbreeding (Parent-Child or Siblings -> Small)
+            // Also covers Self-pollination where plantA.instanceId === plantB.instanceId
+          const isAparentOfB = plantB.parentIds?.includes(plantA.instanceId);
+          const isBparentOfA = plantA.parentIds?.includes(plantB.instanceId);
+          const isSelf = plantA.instanceId === plantB.instanceId;
+          
+          isInbreeding = isAparentOfB || isBparentOfA || isSelf;
+      }
+      
+      return { isInbreeding, isHybrid };
+  }, []);
 
-    const plantType = grownPlot.plant.type;
-
-    if (plantType === 'Milho') {
-        // CORN LOGIC: Global check (no adjacency needed)
-        const otherCorns = garden.filter(p => p.id !== lastGrownId && p.plant?.type === 'Milho' && p.plant.stage === 'grown');
-
-        if (otherCorns.length > 0) {
-            // Randomly select a partner if more than one exists
-            const partner = otherCorns[Math.floor(Math.random() * otherCorns.length)];
-
-            // 1. Set connection visual
-            setCornConnection({ from: partner.id, to: lastGrownId });
-
-            // 2. Trigger Wind
-            setIsWindy(true);
-
-            // 3. Wait for wind animation to finish, then reproduce
-            setTimeout(() => {
-                setIsWindy(false);
-                setCornConnection(null); // Clear connection arrows
-                
-                // Find an empty spot
-                const emptySpotId = findEmptySpot(lastGrownId, garden);
-                
-                if (emptySpotId !== null && grownPlot.plant && partner.plant) {
-                    const plantA = grownPlot.plant;
-                    const plantB = partner.plant;
-
-                    let isInbreeding = false;
-                    let isHybrid = false;
-
-                    // Logic Priority 1: Heterosis (Two small parents -> Big Hybrid)
-                    if (plantA.isSmall && plantB.isSmall) {
-                        isHybrid = true;
-                        isInbreeding = false;
-                    } else {
-                         // Logic Priority 2: Inbreeding (Parent-Child -> Small)
-                        const isAparentOfB = plantB.parentIds?.includes(plantA.instanceId);
-                        const isBparentOfA = plantA.parentIds?.includes(plantB.instanceId);
-                        isInbreeding = isAparentOfB || isBparentOfA;
-                    }
-
-                    setGarden(prev => {
-                        const newGarden = [...prev];
-                        // Generate the new plant, inheriting parents' IDs
-                        newGarden[emptySpotId].plant = createPlant(
-                            'Milho', 
-                            [plantA.instanceId, plantB.instanceId], 
-                            isInbreeding,
-                            isHybrid
-                        );
-                        return newGarden;
-                    });
-                    
-                    // 4. Wait for the new sprout animation to play before showing message
-                    setTimeout(() => {
-                        if (isHybrid) {
-                             setShowHeterosisMessage(true);
-                        } else if (isInbreeding) {
-                            setShowInbreedingMessage(true);
-                        } else {
-                            setShowCornReproductionMessage(true);
-                        }
-                    }, 1500);
-                }
-            }, 4000); // 4 seconds wind duration
-        }
-    } else {
-        // OTHER PLANTS LOGIC: Neighbor check
+  const findNeighbor = (centerId: number, type: PlantType): number | null => {
         const size = 4;
-        const row = Math.floor(lastGrownId / size);
-        const col = lastGrownId % size;
-        let matchingNeighborId: number | null = null;
-
+        const row = Math.floor(centerId / size);
+        const col = centerId % size;
+        
         // Check 8 neighbors
         for (let dr = -1; dr <= 1; dr++) {
             for (let dc = -1; dc <= 1; dc++) {
@@ -229,37 +185,14 @@ const App = () => {
                 if (newRow >= 0 && newRow < size && newCol >= 0 && newCol < size) {
                     const neighborId = newRow * size + newCol;
                     const neighborPlot = garden[neighborId];
-                    if (neighborPlot.plant?.stage === 'grown' && neighborPlot.plant.type === plantType) {
-                        matchingNeighborId = neighborId;
-                        break;
+                    if (neighborPlot.plant?.stage === 'grown' && neighborPlot.plant.type === type) {
+                        return neighborId;
                     }
                 }
             }
-            if (matchingNeighborId !== null) break;
         }
-
-        if (matchingNeighborId !== null) {
-            // Found a mate, animate parents and spawn child
-            const neighborPlant = garden[matchingNeighborId].plant;
-            setAnimatingPlots([lastGrownId, matchingNeighborId]);
-            
-            setTimeout(() => {
-                setAnimatingPlots([]);
-                const emptySpotId = findEmptySpot(lastGrownId, garden); // Search near parent first
-                if (emptySpotId !== null && grownPlot.plant && neighborPlant) {
-                    setGarden(prev => {
-                        const newGarden = [...prev];
-                        newGarden[emptySpotId].plant = createPlant(plantType, [grownPlot.plant!.instanceId, neighborPlant.instanceId]);
-                        return newGarden;
-                    });
-                    setShowReproductionMessage(true);
-                }
-            }, 800);
-        }
-    }
-
-    setLastGrownId(null); // Reset trigger
-  }, [lastGrownId, garden]);
+        return null;
+  };
 
   const findEmptySpot = (centerId: number, currentGarden: PlotState[]): number | null => {
     const size = 4;
@@ -298,6 +231,250 @@ const App = () => {
         isHybrid
     };
   };
+
+  // Reusable function for Pollination logic (Pumpkin and Apple)
+  // Returns true if a pollination was initiated
+  const tryPollination = useCallback((currentGarden: PlotState[], plantType: PlantType, color: string) => {
+      if (beeState !== 'visible') return false;
+      
+      // 1. Identify seekers: Grown plants of type that haven't reproduced yet
+      const seekers = currentGarden.filter(p => 
+        p.plant?.type === plantType && 
+        p.plant.stage === 'grown' && 
+        !reproducedPlantsRef.current.has(p.plant.instanceId)
+      );
+
+      if (seekers.length === 0) return false;
+
+      // Process the first seeker found
+      const source = seekers[0];
+      const sourceId = source.plant!.instanceId;
+
+      // 2. Find a partner
+      // Potential partners: Any OTHER grown plant of same type.
+      // Priority: Unused ones (Seekers) > Used ones (Experienced)
+      let partners = currentGarden.filter(p => 
+        p.plant?.type === plantType && 
+        p.plant.stage === 'grown' && 
+        p.plant.instanceId !== sourceId
+      );
+
+      if (partners.length === 0) return false;
+
+      // Sort: Unused first (Seekers)
+      partners.sort((a, b) => {
+          const aUnused = !reproducedPlantsRef.current.has(a.plant!.instanceId);
+          const bUnused = !reproducedPlantsRef.current.has(b.plant!.instanceId);
+          if (aUnused && !bUnused) return -1;
+          if (!aUnused && bUnused) return 1;
+          return 0;
+      });
+
+      const partner = partners[0];
+      const partnerId = partner.plant!.instanceId;
+
+      // EXECUTE
+      setActiveConnection({ from: source.id, to: partner.id, color: color });
+      setAnimatingPlots([source.id, partner.id]);
+
+      // Mark source as used immediately
+      reproducedPlantsRef.current.add(sourceId);
+      // If partner was also a seeker, mark them too so they don't initiate their own separate event immediately
+      if (!reproducedPlantsRef.current.has(partnerId)) {
+         reproducedPlantsRef.current.add(partnerId);
+      }
+
+      setTimeout(() => {
+          setActiveConnection(null);
+          setAnimatingPlots([]);
+
+          const emptySpotId = findEmptySpot(source.id, currentGarden);
+          
+          if (emptySpotId !== null) {
+              const { isInbreeding, isHybrid } = determineOffspringGenetics(source.plant!, partner.plant!);
+              
+              setGarden(prev => {
+                  const newGarden = [...prev];
+                  // Re-check if spot is still empty
+                  if (!newGarden[emptySpotId].plant) {
+                      newGarden[emptySpotId].plant = createPlant(
+                          plantType, 
+                          [sourceId, partnerId],
+                          isInbreeding, 
+                          isHybrid
+                      );
+                  }
+                  return newGarden;
+              });
+
+              setTimeout(() => {
+                  if (isHybrid) setShowHeterosisMessage(true);
+                  else if (isInbreeding) setShowInbreedingMessage(true);
+                  else {
+                      if (plantType === 'Abóbora') setShowPumpkinCrossMessage(true);
+                      if (plantType === 'Maçã') setShowAppleCrossMessage(true);
+                  }
+
+                  // Trigger check for next pair/seeker
+                  setReproductionTrigger(prev => prev + 1);
+              }, 500);
+          } else {
+              // Even if failed to plant, we consume the chance and move to next
+              setReproductionTrigger(prev => prev + 1);
+          }
+      }, 2000);
+
+      return true;
+  }, [beeState, determineOffspringGenetics]);
+
+
+  // Effect: Check for Bee Pollination loop (Pumpkin and Apple)
+  // This runs when bees are visible or when the garden updates (via reproduction trigger)
+  useEffect(() => {
+      if (beeState === 'visible') {
+          const timer = setTimeout(() => {
+              // Try Pumpkin first
+              const pumpkinSuccess = tryPollination(garden, 'Abóbora', '#FF8C00');
+              if (!pumpkinSuccess) {
+                   // If no pumpkin pollination, try Apple
+                   tryPollination(garden, 'Maçã', '#ff4d4d');
+              }
+          }, 500);
+          return () => clearTimeout(timer);
+      }
+  }, [beeState, garden, reproductionTrigger, tryPollination]);
+
+
+  // Effect 4: Reproduction Logic (Triggered when a plant finishes growing)
+  useEffect(() => {
+    if (lastGrownId === null) return;
+
+    const grownPlot = garden[lastGrownId];
+    if (!grownPlot || !grownPlot.plant || grownPlot.plant.stage !== 'grown') {
+        setLastGrownId(null);
+        return;
+    }
+
+    const plantType = grownPlot.plant.type;
+
+    if (plantType === 'Milho') {
+        // CORN LOGIC
+        const otherCorns = garden.filter(p => p.id !== lastGrownId && p.plant?.type === 'Milho' && p.plant.stage === 'grown');
+
+        if (otherCorns.length > 0) {
+            const partner = otherCorns[Math.floor(Math.random() * otherCorns.length)];
+
+            setActiveConnection({ from: partner.id, to: lastGrownId, color: '#FFD700' });
+            setIsWindy(true);
+
+            setTimeout(() => {
+                setIsWindy(false);
+                setActiveConnection(null); 
+                
+                const emptySpotId = findEmptySpot(lastGrownId, garden);
+                
+                if (emptySpotId !== null && grownPlot.plant && partner.plant) {
+                    const { isInbreeding, isHybrid } = determineOffspringGenetics(grownPlot.plant, partner.plant);
+
+                    setGarden(prev => {
+                        const newGarden = [...prev];
+                        newGarden[emptySpotId].plant = createPlant(
+                            'Milho', 
+                            [grownPlot.plant!.instanceId, partner.plant!.instanceId], 
+                            isInbreeding,
+                            isHybrid
+                        );
+                        return newGarden;
+                    });
+                    
+                    setTimeout(() => {
+                        if (isHybrid) setShowHeterosisMessage(true);
+                        else if (isInbreeding) setShowInbreedingMessage(true);
+                        else setShowCornReproductionMessage(true);
+                    }, 1500);
+                }
+            }, 4000); 
+        }
+    } else if (plantType === 'Abóbora') {
+        // PUMPKIN LOGIC - Fallback for Self-Pollination ONLY
+        // Cross-pollination is handled by the beeState/queue effect.
+        
+        const currentPlantId = grownPlot.plant.instanceId;
+        
+        // Schedule check for self-pollination if no bees present
+        setTimeout(() => {
+            setGarden(currentGarden => {
+                const parentPlot = currentGarden[lastGrownId];
+                
+                // Conditions for Self-Pollination:
+                // 1. Plant must still exist and be same instance
+                // 2. Must NOT have reproduced yet (checked via Ref)
+                // 3. Bees must NOT be visible (if bees arrived, they handle it)
+                if (parentPlot && 
+                    parentPlot.plant && 
+                    parentPlot.plant.instanceId === currentPlantId &&
+                    !reproducedPlantsRef.current.has(currentPlantId)
+                ) {
+                        // If Bees are visible now, we SKIP self-pollination and let the bee queue handle it
+                        if (beeState === 'visible') return currentGarden;
+
+                        // Execute Self-Pollination
+                        const emptySpotId = findEmptySpot(lastGrownId, currentGarden);
+                        if (emptySpotId !== null) {
+                            reproducedPlantsRef.current.add(currentPlantId); // Mark used
+
+                            const newGarden = [...currentGarden];
+                            newGarden[emptySpotId].plant = createPlant(
+                            'Abóbora',
+                            [currentPlantId],
+                            true, // Inbreeding
+                            false
+                            );
+                            setShowPumpkinSelfMessage(true);
+                            return newGarden;
+                        }
+                }
+                return currentGarden;
+            });
+        }, 30000); // 30 Seconds delay
+
+    } else if (plantType === 'Maçã') {
+        // APPLE LOGIC
+        // Apples strictly rely on the Bee Polination Effect loop.
+        // Unlike Pumpkin, they DO NOT have a fallback timer for self-pollination.
+        // If bees are present, the effect picks it up. If not, it waits.
+        
+        // Trigger an immediate check in case bees are already active
+        if (beeState === 'visible') {
+            setReproductionTrigger(prev => prev + 1);
+        }
+
+    } else {
+        // OTHER PLANTS LOGIC (Girassol) - Simple neighbor check
+        const neighborId = findNeighbor(lastGrownId, plantType);
+
+        if (neighborId !== null) {
+            const neighborPlant = garden[neighborId].plant;
+            setAnimatingPlots([lastGrownId, neighborId]);
+            
+            setTimeout(() => {
+                setAnimatingPlots([]);
+                const emptySpotId = findEmptySpot(lastGrownId, garden); 
+                if (emptySpotId !== null && grownPlot.plant && neighborPlant) {
+                    setGarden(prev => {
+                        const newGarden = [...prev];
+                        newGarden[emptySpotId].plant = createPlant(plantType, [grownPlot.plant!.instanceId, neighborPlant.instanceId]);
+                        return newGarden;
+                    });
+                    setShowReproductionMessage(true);
+                }
+            }, 800);
+        }
+    }
+
+    setLastGrownId(null); // Reset trigger
+  }, [lastGrownId, garden, beeState, determineOffspringGenetics]);
+
 
   const growPlant = (plotId: number) => {
     setTimeout(() => {
@@ -346,11 +523,27 @@ const App = () => {
 
       // Action: Harvest a grown plant
       if (selectedTool === 'colher' && plot.plant?.stage === 'grown') {
-        const harvestedPhenotype = plot.plant.phenotype;
-        setInventory(currentInventory => ({
-          ...currentInventory,
-          [harvestedPhenotype]: (currentInventory[harvestedPhenotype] || 0) + 1,
-        }));
+        const type = plot.plant.type;
+
+        // Determine size
+        let size: PlantSize = 'normal';
+        if (plot.plant.isHybrid || plot.fertilizer) {
+            size = 'large';
+        } else if (plot.plant.isSmall) {
+            size = 'small';
+        }
+
+        setInventory(currentInventory => {
+            const plantCounts = currentInventory[type] || { small: 0, normal: 0, large: 0 };
+            return {
+                ...currentInventory,
+                [type]: {
+                    ...plantCounts,
+                    [size]: plantCounts[size] + 1
+                }
+            };
+        });
+
         plot.plant = null;
         plot.isWatered = false;
         plot.fertilizer = null;
@@ -398,20 +591,21 @@ const App = () => {
             </div>
         )}
 
-        {/* Connection Overlay for Corn */}
+        {/* Connection Overlay for Corn and Pumpkin */}
         <svg className="connection-overlay" viewBox="0 0 4 4" preserveAspectRatio="none">
              <defs>
                 <marker id="arrowhead" markerWidth="5" markerHeight="3.5" refX="4" refY="1.75" orient="auto">
-                    <polygon points="0 0, 5 1.75, 0 3.5" fill="#FFD700" />
+                    <polygon points="0 0, 5 1.75, 0 3.5" fill={activeConnection?.color || "#FFD700"} />
                 </marker>
             </defs>
-            {cornConnection && (
+            {activeConnection && (
                 <line 
-                    x1={getCoordinates(cornConnection.from).x} 
-                    y1={getCoordinates(cornConnection.from).y} 
-                    x2={getCoordinates(cornConnection.to).x} 
-                    y2={getCoordinates(cornConnection.to).y} 
+                    x1={getCoordinates(activeConnection.from).x} 
+                    y1={getCoordinates(activeConnection.from).y} 
+                    x2={getCoordinates(activeConnection.to).x} 
+                    y2={getCoordinates(activeConnection.to).y} 
                     className="connection-line"
+                    stroke={activeConnection.color || "#FFD700"}
                     markerEnd="url(#arrowhead)"
                 />
             )}
@@ -499,14 +693,41 @@ const App = () => {
       <div className="floating-panel inventory-panel">
         <h2>Inventário</h2>
         {Object.keys(inventory).length > 0 ? (
-          <ul className="inventory-list">
-            {Object.entries(inventory).map(([phenotype, count]) => (
-              <li key={phenotype} className="inventory-item">
-                <span><span className="emoji">{phenotype}</span></span>
-                <span className="inventory-count">{count}</span>
-              </li>
-            ))}
-          </ul>
+          <div className="inventory-list">
+            {(Object.entries(inventory) as [PlantType, Record<PlantSize, number>][]).map(([type, counts]) => {
+                const total = counts.small + counts.normal + counts.large;
+                if (total === 0) return null;
+
+                return (
+                    <div key={type} className="inventory-group">
+                        <div className="inventory-header">
+                            <span className="inventory-header-emoji">{PLANT_CONFIG[type].phenotype}</span>
+                            {type}
+                        </div>
+                        <div className="inventory-variants">
+                            {counts.small > 0 && (
+                                <div className="inventory-variant variant-small" title="Pequeno">
+                                    <span className="variant-emoji">{PLANT_CONFIG[type].phenotype}</span>
+                                    <span className="variant-count">{counts.small}</span>
+                                </div>
+                            )}
+                            {counts.normal > 0 && (
+                                <div className="inventory-variant variant-normal" title="Normal">
+                                    <span className="variant-emoji">{PLANT_CONFIG[type].phenotype}</span>
+                                    <span className="variant-count">{counts.normal}</span>
+                                </div>
+                            )}
+                            {counts.large > 0 && (
+                                <div className="inventory-variant variant-large" title="Grande">
+                                    <span className="variant-emoji">{PLANT_CONFIG[type].phenotype}</span>
+                                    <span className="variant-count">{counts.large}</span>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                );
+            })}
+          </div>
         ) : (
           <p className="empty-inventory-text">Sua colheita aparecerá aqui.</p>
         )}
@@ -532,6 +753,7 @@ const App = () => {
                     <li><strong>Cresça mais:</strong> Use <strong>Adubo Orgânico</strong> ou <strong>Agrotóxicos</strong> para fazer a planta ficar gigante!</li>
                     <li><strong>Atenção:</strong> Agrotóxicos funcionam bem, mas espantam as abelhas! 🐝🚫</li>
                     <li><strong>Combine:</strong> Plantas vizinhas iguais criam novos brotos!</li>
+                    <li><strong>Abóboras, Maçãs e Milhos:</strong> Têm regras especiais de genética e polinização. Descubra todas as variantes!</li>
                     <li><strong>Colha:</strong> Use a pá para colher.</li>
                 </ol>
             </div>
@@ -552,8 +774,39 @@ const App = () => {
         <div className="modal-overlay" onClick={() => setShowCornReproductionMessage(false)}>
             <div className="modal-content" onClick={(e) => e.stopPropagation()}>
                 <h2>Polinização do Milho</h2>
-                <p>O cruzamento do milho ocorre principalmente pela polinização cruzada, impulsionada pelo vento, que transporta grãos de pólen das flores masculinas (pendões) para as flores femininas (cabelos da espiga).</p>
+                <p>O cruzamento do milho ocorre principalmente pela polinização cruzada, impulsionada pelo vento.</p>
                 <button className="ok-button" onClick={() => setShowCornReproductionMessage(false)}>Entendi</button>
+            </div>
+        </div>
+      )}
+
+      {showPumpkinCrossMessage && (
+        <div className="modal-overlay" onClick={() => setShowPumpkinCrossMessage(false)}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                <h2>Polinização Cruzada (Abóbora) 🐝</h2>
+                <p>Graças às abelhas, o pólen viajou de uma flor para outra! Isso garante maior diversidade genética.</p>
+                <button className="ok-button" onClick={() => setShowPumpkinCrossMessage(false)}>Ótimo!</button>
+            </div>
+        </div>
+      )}
+
+       {showAppleCrossMessage && (
+        <div className="modal-overlay" onClick={() => setShowAppleCrossMessage(false)}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                <h2>Polinização Cruzada (Maçã) 🐝🍎</h2>
+                <p>As abelhas viajaram pelo pomar e polinizaram suas macieiras com sucesso!</p>
+                <button className="ok-button" onClick={() => setShowAppleCrossMessage(false)}>Delícia!</button>
+            </div>
+        </div>
+      )}
+
+      {showPumpkinSelfMessage && (
+        <div className="modal-overlay" onClick={() => setShowPumpkinSelfMessage(false)}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                <h2>Auto-polinização (Abóbora)</h2>
+                <p>Sem abelhas ou parceiros por perto, a planta realizou a auto-fecundação após um tempo.</p>
+                <p>Isso aumenta a chance de <strong>depressão endogâmica</strong> (plantas menores e mais fracas).</p>
+                <button className="ok-button" onClick={() => setShowPumpkinSelfMessage(false)}>Entendi</button>
             </div>
         </div>
       )}
@@ -562,8 +815,8 @@ const App = () => {
         <div className="modal-overlay" onClick={() => setShowInbreedingMessage(false)}>
             <div className="modal-content" onClick={(e) => e.stopPropagation()}>
                 <h2>Depressão Endogâmica 🧬</h2>
-                <p><strong>Sua planta diminuiu!</strong> O endocruzamento faz aumentar a homozigose e, consequentemente, diminuir a heterozigose na população.</p>
-                <p>Isso pode levar a <strong>Depressão endogâmica</strong>: A manifestação de genes recessivos deletérios, que geralmente resultam em alguma degeneração no vigor, na produtividade ou na capacidade de sobrevivência da planta.</p>
+                <p><strong>Sua planta diminuiu!</strong> O cruzamento entre parentes próximos ou auto-fecundação aumentou a homozigose.</p>
+                <p>Isso pode levar a perda de vigor e produtividade (plantas pequenas).</p>
                 <button className="ok-button" onClick={() => setShowInbreedingMessage(false)}>Entendi</button>
             </div>
         </div>
@@ -574,7 +827,7 @@ const App = () => {
             <div className="modal-content" onClick={(e) => e.stopPropagation()}>
                 <h2>Vigor Híbrido (Heterose) 🚀</h2>
                 <p><strong>Sua planta cresceu mais forte!</strong></p>
-                <p>As linhagens endocruzadas puras servem como "blocos de construção" para a criação de híbridos de milho. Quando duas linhagens endogâmicas diferentes são cruzadas, o resultado é um híbrido F1 que exibe o fenômeno da heterose (vigor híbrido), superando as características de ambos os pais em termos de produtividade e resistência.</p>
+                <p>O cruzamento entre duas linhagens puras (pequenas) diferentes gerou um híbrido vigoroso e maior que os pais!</p>
                 <button className="ok-button" onClick={() => setShowHeterosisMessage(false)}>Incrível!</button>
             </div>
         </div>
@@ -584,7 +837,7 @@ const App = () => {
         <div className="modal-overlay" onClick={() => setShowCornHint(false)}>
             <div className="modal-content" onClick={(e) => e.stopPropagation()}>
                 <h2>Dica do Milho 🌽</h2>
-                <p>Deseja plantar outra muda de milho? O milho prefere a fecundação cruzada. Nele acontece a protandria: O pendão, a inflorescência masculina, amadurece e libera o pólen antes dos estigmas da espiga estarem prontos para recebê-lo</p>
+                <p>Deseja plantar outra muda de milho? O milho prefere a fecundação cruzada. Sozinho ele tem dificuldade de se reproduzir.</p>
                 <button className="ok-button" onClick={() => setShowCornHint(false)}>OK</button>
             </div>
         </div>
