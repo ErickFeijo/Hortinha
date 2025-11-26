@@ -1,7 +1,8 @@
-
 :root {
   --sky-top: #87CEEB;
   --sky-bottom: #a3def5;
+  --sky-top-rain: #6c7a81;
+  --sky-bottom-rain: #8e9ca3;
   --grass-top: #7CFC00;
   --grass-bottom: #56af00;
   --soil-color: #b9936c;
@@ -49,6 +50,11 @@ body {
   justify-content: center;
   align-items: center;
   padding: 2rem;
+  transition: background-image 1s ease-in-out;
+}
+
+.app-container.is-raining {
+  background-image: linear-gradient(to bottom, var(--sky-top-rain) 0%, var(--sky-bottom-rain) 30%, var(--grass-top) 30%, var(--grass-bottom) 100%);
 }
 
 .header {
@@ -75,10 +81,10 @@ body {
   margin-top: 0.25rem;
 }
 
-/* Notification System */
+/* Notification System moved to bottom-left */
 .notification-wrapper {
-  position: absolute;
-  top: 1.5rem;
+  position: fixed;
+  bottom: 1.5rem;
   left: 1.5rem;
   z-index: 50;
 }
@@ -133,7 +139,7 @@ body {
 
 .history-panel {
   position: absolute;
-  top: 60px;
+  bottom: 60px; /* Position above the bell */
   left: 0;
   background-color: var(--wood-panel);
   border: 4px solid var(--wood-border);
@@ -205,6 +211,86 @@ body {
   to { transform: scale(1); opacity: 1; }
 }
 
+/* Weather Forecast moved to top-left */
+.weather-forecast {
+  position: absolute;
+  top: 1.5rem;
+  left: 1.5rem;
+  width: 250px;
+  z-index: 50;
+  background-color: rgba(210, 180, 140, 0.85); /* Semi-transparent */
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  border: 4px solid var(--wood-border);
+  border-radius: 12px;
+  padding: 0.5rem 1rem;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: row; /* Flattened layout */
+  align-items: center;
+  justify-content: space-around;
+  gap: 1rem;
+}
+.weather-forecast h3 {
+  display: none; /* Removed for flatter look */
+}
+.forecast-now {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text-color);
+}
+.forecast-future {
+  display: flex;
+  gap: 0.5rem;
+  border-top: none;
+  padding-top: 0;
+}
+.forecast-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.weather-icon {
+  font-size: 1.8rem;
+}
+.forecast-future .weather-icon {
+  font-size: 1.3rem;
+  opacity: 0.7;
+}
+.forecast-future .forecast-item:first-child .weather-icon {
+  opacity: 1;
+  transform: scale(1.1);
+}
+
+/* Rain Animation */
+.rain-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 14; /* Below bees, above garden */
+}
+
+.raindrop {
+  position: absolute;
+  bottom: 100%;
+  width: 2px;
+  height: 20px;
+  background: linear-gradient(to bottom, rgba(255,255,255,0) 0%, rgba(255,255,255,0.6) 100%);
+  animation: fall linear infinite;
+}
+
+@keyframes fall {
+  to {
+    transform: translateY(100vh);
+  }
+}
 
 .garden-container {
   padding: 1.5rem;
@@ -216,6 +302,22 @@ body {
   /* Set max-width to contain the grid (328px) + padding + border */
   max-width: calc(328px + 3rem + 16px);
   position: relative;
+}
+
+/* Manual Pollination Visual Feedback */
+.garden-container.carrying-pollen {
+  /* Glowing dot cursor for a more subtle effect */
+  cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><defs><filter id="glow"><feGaussianBlur stdDeviation="1.5" result="coloredBlur"/><feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><circle cx="12" cy="12" r="4" fill="%23FFD700" filter="url(%23glow)"/></svg>') 12 12, auto;
+}
+
+/* FIX: Ensure plots inherit the custom cursor and don't show a hand icon */
+.garden-container.carrying-pollen .garden-plot {
+  cursor: inherit;
+}
+
+.garden-plot.pollen-source .plant {
+  filter: drop-shadow(0 0 10px #FFD700) brightness(1.2);
+  transition: filter 0.3s ease-in-out;
 }
 
 /* Connection Overlay */
@@ -383,6 +485,8 @@ body {
   animation: sprout-pop 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275);
   line-height: 1;
   transition: transform 0.3s ease-out;
+  position: relative; /* Establish stacking context */
+  z-index: 2; /* Ensure plant is above plot background/shadow on hover */
 }
 
 /* Sprout Identification Icon */
@@ -578,6 +682,51 @@ body {
     line-height: 1.2;
 }
 
+/* Tooltip Styles */
+[data-tooltip] {
+  position: relative;
+}
+
+[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: -10px; /* Align to top of button */
+  left: 100%; /* Position to the right */
+  margin-left: 10px; /* Space from button */
+  background-color: var(--text-color);
+  color: var(--white);
+  padding: 0.5rem 0.8rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 400;
+  white-space: normal; /* Allow text to wrap */
+  width: 160px; /* Make it more square */
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.2s ease-in-out, visibility 0.2s ease-in-out;
+  z-index: 100;
+}
+
+/* Specific style for seed buttons at the bottom */
+.seed-button[data-tooltip]::after {
+  top: auto;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-left: 0;
+  margin-bottom: 8px;
+  width: auto; /* Revert to auto width */
+  white-space: nowrap; /* Prevent wrapping */
+}
+
+[data-tooltip]:hover::after {
+  opacity: 1;
+  visibility: visible;
+}
+
+
 .tools-panel {
     left: 1.5rem;
     top: 50%;
@@ -586,20 +735,23 @@ body {
     flex-direction: column;
     gap: 0.5rem;
     padding: 1rem;
-    width: 180px;
+    width: auto; /* Fit content */
 }
 
 .inventory-panel {
   top: 1.5rem;
   right: 1.5rem;
   width: 250px;
+  background-color: rgba(210, 180, 140, 0.85); /* Semi-transparent wood color */
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px); /* For Safari */
 }
 
 .inventory-list {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  max-height: 60vh;
+  max-height: 75vh; /* Increased to make it longer */
   overflow-y: auto;
   padding-right: 0.25rem;
 }
@@ -875,39 +1027,91 @@ body {
 }
 
 /* Responsive Design */
-@media (max-width: 768px) {
-  .header {
-    padding: 0.75rem 1.5rem;
-  }
-  .header h1 {
-    font-size: 1.5rem;
-  }
-  .header p {
-      display: none;
-  }
-  .garden-grid {
-    max-width: 263px;
-  }
-  .inventory-panel {
-    top: auto;
-    bottom: 1.5rem;
-    right: 1.5rem;
-    left: auto;
-    transform: none;
-    width: 200px;
-  }
-  .tools-panel {
-      top: auto;
-      bottom: 1.5rem;
-      left: 1.5rem;
-      transform: none;
-      width: 160px;
-  }
-  .seed-panel {
-      display: none; /* Hide seeds on tablets to avoid clutter */
+@media (max-width: 900px) {
+  body {
+    overflow: auto;
   }
   .app-container {
-      padding-bottom: 10rem;
+    padding: 1rem;
+    padding-bottom: 15rem; /* Space for panels at the bottom */
+    justify-content: flex-start;
+    height: auto;
+    min-height: 100vh;
+  }
+  .header {
+    position: relative;
+    top: auto;
+    width: 100%;
+    margin-top: 5rem; /* Space for fixed notifs/weather */
+    margin-bottom: 1rem;
+  }
+  .header p {
+    display: none;
+  }
+  .floating-panel {
+    position: relative;
+    top: auto;
+    left: auto;
+    right: auto;
+    bottom: auto;
+    transform: none;
+    width: 100%;
+    margin: 1rem 0;
+    z-index: 1;
+  }
+  .garden-container {
+    order: -1; /* Move garden up */
+    width: 95vw;
+    max-width: 400px; /* Limit size on tablets */
+  }
+  .tools-panel {
+    order: 1;
+    flex-direction: row;
+    overflow-x: auto;
+    padding: 0.5rem;
+  }
+  .tool-button {
+    flex: 0 0 auto;
+    min-width: 120px;
+    justify-content: center;
+  }
+  .seed-panel {
+    order: 2;
+  }
+  .seed-selection-grid {
+    display: flex;
+    overflow-x: auto;
+    padding-bottom: 0.5rem;
+  }
+  .seed-button {
+    flex: 0 0 80px;
+  }
+  .inventory-panel {
+    order: 3;
+    width: 100%;
+  }
+
+  /* Keep notifications and weather fixed on mobile */
+  .weather-forecast {
+    position: absolute;
+    top: 1rem;
+    left: 1rem;
+    width: auto;
+    max-width: 180px;
+  }
+  
+  .notification-wrapper {
+    position: fixed;
+    bottom: 1rem;
+    left: 1rem;
+  }
+
+  .inventory-panel {
+    display: none; /* Hide for now to simplify mobile */
+  }
+
+  [data-tooltip]::after {
+    display: none !important;
   }
 }
 
@@ -918,11 +1122,14 @@ body {
     .garden-plot {
         font-size: 1.8rem;
     }
-    .inventory-panel, .tools-panel {
-        display: none; /* Hide panels on very small screens for simplicity */
+    .weather-forecast {
+        flex-direction: column;
+        gap: 0.5rem;
+        padding: 0.5rem;
+        align-items: flex-start;
     }
-    .seed-panel {
-        display: block;
-        width: calc(100% - 3rem);
+    .forecast-future {
+        padding-left: 0;
+        border-left: none;
     }
 }
