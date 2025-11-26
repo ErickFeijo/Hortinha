@@ -216,7 +216,7 @@ body {
   position: absolute;
   top: 1.5rem;
   left: 1.5rem;
-  width: 250px;
+  width: auto; /* Changed */
   z-index: 50;
   background-color: rgba(210, 180, 140, 0.85); /* Semi-transparent */
   backdrop-filter: blur(4px);
@@ -263,6 +263,37 @@ body {
 .forecast-future .forecast-item:first-child .weather-icon {
   opacity: 1;
   transform: scale(1.1);
+}
+
+.advance-weather-button {
+  background-color: var(--wood-panel);
+  border: 2px solid var(--wood-border);
+  color: var(--text-color);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 1.2rem;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+  padding: 0;
+  line-height: 0;
+}
+
+.advance-weather-button:hover {
+  background-color: #e0c4a4;
+  transform: scale(1.1);
+}
+
+.advance-weather-button[data-tooltip]::after {
+    left: 50%;
+    transform: translateX(-50%);
+    top: 100%;
+    margin-top: 8px;
+    white-space: nowrap;
 }
 
 /* Rain Animation */
@@ -337,13 +368,21 @@ body {
 }
 
 .connection-line {
-  stroke: #FFD700;
   stroke-width: 0.08;
   stroke-linecap: round;
-  stroke-dasharray: 0.2;
-  animation: dash-animation 1s linear infinite;
   filter: drop-shadow(0 2px 2px rgba(0,0,0,0.5));
 }
+
+.bee-connection {
+  stroke-dasharray: 0.2;
+  animation: dash-animation 1s linear infinite;
+}
+
+.corn-connection {
+  stroke-dasharray: 0.05 0.1;
+  animation: dash-animation 2s linear infinite;
+}
+
 
 @keyframes dash-animation {
   to {
@@ -390,13 +429,19 @@ body {
 .wind-line:nth-child(5) { top: 25%; left: -180px; width: 150px; animation: wind-blow 3.2s linear infinite; animation-delay: 1.2s; }
 .wind-line:nth-child(6) { top: 65%; left: -130px; width: 280px; animation: wind-blow 2.4s linear infinite; animation-delay: 0.4s; }
 .wind-line:nth-child(7) { top: 45%; left: -160px; width: 220px; animation: wind-blow 2.9s linear infinite; animation-delay: 1.0s; }
+.wind-line:nth-child(8) { top: 85%; left: -140px; width: 240px; animation: wind-blow 2.6s linear infinite; animation-delay: 0.6s; }
+.wind-line:nth-child(9) { top: 5%; left: -170px; width: 190px; animation: wind-blow 3.1s linear infinite; animation-delay: 1.4s; }
+.wind-line:nth-child(10) { top: 95%; left: -110px; width: 210px; animation: wind-blow 2.7s linear infinite; animation-delay: 0.9s; }
+.wind-line:nth-child(11) { top: 50%; left: -190px; width: 260px; animation: wind-blow 2.3s linear infinite; animation-delay: 0.1s; }
+.wind-line:nth-child(12) { top: 60%; left: -100px; width: 170px; animation: wind-blow 3.3s linear infinite; animation-delay: 1.1s; }
 
-/* Pollen particles */
-.wind-pollen:nth-of-type(8) { top: 16%; animation: pollen-blow 2.5s linear infinite; animation-delay: 0.2s; }
-.wind-pollen:nth-of-type(9) { top: 36%; animation: pollen-blow 3.0s linear infinite; animation-delay: 0.7s; }
-.wind-pollen:nth-of-type(10) { top: 56%; animation: pollen-blow 2.2s linear infinite; animation-delay: 0.4s; }
-.wind-pollen:nth-of-type(11) { top: 76%; animation: pollen-blow 2.8s linear infinite; animation-delay: 1.0s; }
-.wind-pollen:nth-of-type(12) { top: 46%; animation: pollen-blow 2.9s linear infinite; animation-delay: 1.2s; }
+
+/* Pollen particles - only animate when pollination is active */
+.wind-overlay.is-pollinating .wind-pollen:nth-of-type(13) { animation: pollen-blow 2.5s linear infinite; animation-delay: 0.2s; top: 16%; }
+.wind-overlay.is-pollinating .wind-pollen:nth-of-type(14) { animation: pollen-blow 3.0s linear infinite; animation-delay: 0.7s; top: 36%; }
+.wind-overlay.is-pollinating .wind-pollen:nth-of-type(15) { animation: pollen-blow 2.2s linear infinite; animation-delay: 0.4s; top: 56%; }
+.wind-overlay.is-pollinating .wind-pollen:nth-of-type(16) { animation: pollen-blow 2.8s linear infinite; animation-delay: 1.0s; top: 76%; }
+.wind-overlay.is-pollinating .wind-pollen:nth-of-type(17) { animation: pollen-blow 2.9s linear infinite; animation-delay: 1.2s; top: 46%; }
 
 
 @keyframes wind-blow {
@@ -535,7 +580,7 @@ body {
 
 
 .garden-plot.combining .plant {
-  animation: pulse 0.8s ease-in-out;
+  animation: pulse 0.8s ease-in-out infinite;
 }
 
 @keyframes sprout-pop {
@@ -593,6 +638,27 @@ body {
     filter: brightness(1);
   }
 }
+
+/* Green Manuring Effect */
+@keyframes green-boost-effect {
+  0% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+  50% {
+    transform: scale(1.15);
+    filter: brightness(1.2) drop-shadow(0 0 8px var(--grass-top));
+  }
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+}
+
+.garden-plot.fertilizing-effect .plant {
+  animation: green-boost-effect 1.5s ease-in-out;
+}
+
 
 .floating-panel {
   position: fixed;
@@ -1026,6 +1092,48 @@ body {
   }
 }
 
+/* Bacterium Animation for Beans */
+.bacterium-animation {
+    position: absolute;
+    font-size: 4.5rem;
+    z-index: 16; /* Above bees */
+    pointer-events: none;
+    filter: drop-shadow(0 0 10px #9575cd);
+    left: var(--start-x);
+    top: var(--start-y);
+    animation: travel-to-bean 6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes travel-to-bean {
+    0% {
+        transform: scale(1) rotate(-30deg);
+        opacity: 1;
+    }
+    90% {
+        transform: scale(1) rotate(320deg);
+        opacity: 1;
+    }
+    100% {
+        left: var(--target-x);
+        top: var(--target-y);
+        transform: scale(0) translate(-50%, -50%) rotate(360deg);
+        opacity: 0;
+    }
+}
+
+/* Nitrogen boost effect for beans */
+@keyframes nitrogen-boost {
+    0% { transform: scale(1); }
+    70% { transform: scale(1.4); filter: drop-shadow(0 0 8px #a5d6a7); }
+    100% { transform: scale(1.3); }
+}
+
+.plant.boosted {
+    transform: scale(1.3);
+    animation: nitrogen-boost 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+
 /* Responsive Design */
 @media (max-width: 900px) {
   body {
@@ -1088,7 +1196,6 @@ body {
   }
   .inventory-panel {
     order: 3;
-    width: 100%;
   }
 
   /* Keep notifications and weather fixed on mobile */

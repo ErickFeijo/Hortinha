@@ -6,7 +6,7 @@ type ToolType = 'regador' | 'adubo_organico' | 'agrotoxico' | 'colher' | 'polini
 type FertilizerType = 'organic' | 'chemical' | null;
 type BeeState = 'hidden' | 'visible' | 'dying';
 type PlantSize = 'small' | 'normal' | 'large';
-type WeatherType = 'sunny' | 'raining';
+type WeatherType = 'sunny' | 'raining' | 'sunny_windy' | 'raining_windy';
 
 interface PlantInfo {
   name: PlantType;
@@ -39,6 +39,7 @@ interface PlantState {
   parentIds: string[];
   isSmall?: boolean;
   isHybrid?: boolean;
+  isBoosted?: boolean;
 }
 
 interface PlotState {
@@ -51,7 +52,7 @@ interface PlotState {
 interface Connection {
     from: number;
     to: number;
-    color?: string;
+    type: 'Abóbora' | 'Girassol' | 'Maçã' | 'Milho';
 }
 
 type InventoryState = Partial<Record<PlantType, Record<PlantSize, number>>>;
@@ -71,9 +72,16 @@ interface PollenSack {
 
 // Helper to generate a random starting forecast
 const generateInitialForecast = (): WeatherType[] => {
-    const weathers: WeatherType[] = ['sunny', 'sunny', 'sunny', 'raining'];
+    const weathers: WeatherType[] = ['sunny', 'sunny', 'raining', 'sunny_windy', 'raining_windy'];
     // Simple shuffle
     return Array.from({ length: 4 }, () => weathers[Math.floor(Math.random() * weathers.length)]);
+};
+
+const CONNECTION_STYLES: Record<Connection['type'], { color: string; marker: string }> = {
+    Abóbora: { color: '#FF8C00', marker: 'url(#arrowhead-pumpkin)' },
+    Girassol: { color: '#FFD700', marker: 'url(#arrowhead-sunflower)' },
+    Maçã: { color: '#ff4d4d', marker: 'url(#arrowhead-apple)' },
+    Milho: { color: '#fefcbf', marker: 'url(#arrowhead-corn)' },
 };
 
 
@@ -85,6 +93,7 @@ const App = () => {
   const [inventory, setInventory] = useState<InventoryState>({});
   const [isInstructionsOpen, setInstructionsOpen] = useState(true);
   const [animatingPlots, setAnimatingPlots] = useState<number[]>([]);
+  const [fertilizingPlots, setFertilizingPlots] = useState<number[]>([]);
   
   // State to track the most recently grown plant to trigger reproduction logic
   const [lastGrownId, setLastGrownId] = useState<number | null>(null);
@@ -100,17 +109,23 @@ const App = () => {
 
   // --- MANUAL POLLINATION ---
   const [pollenSack, setPollenSack] = useState<PollenSack | null>(null);
+  
+  // --- BEAN BACTERIUM ANIMATION ---
+  const [bacteriumAnimation, setBacteriumAnimation] = useState<{ active: boolean; targetPlotId: number | null }>({ active: false, targetPlotId: null });
+  const bacteriumRef = useRef<HTMLDivElement>(null);
+
 
   // Animation state
   const [beeState, setBeeState] = useState<BeeState>('hidden');
   const [manualBeeMode, setManualBeeMode] = useState(false); // New state for manual bee button
   const [isWindy, setIsWindy] = useState(false);
-  const [activeConnection, setActiveConnection] = useState<Connection | null>(null);
+  const [isPollinating, setIsPollinating] = useState(false);
+  const [activeConnections, setActiveConnections] = useState<Connection[]>([]);
   const [reproductionTrigger, setReproductionTrigger] = useState(0);
 
   const cornTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reproducedPlantsRef = useRef<Set<string>>(new Set());
-  // FIX: Explicitly initialize useRef with undefined to fix "Expected 1 arguments, but got 0" error.
+  const growingSproutsRef = useRef(new Set<number>());
   const prevWeatherRef = useRef<WeatherType | undefined>(undefined);
 
   const hasSunflowers = garden.some(plot => plot.plant?.type === 'Girassol' && plot.plant.stage === 'grown');
@@ -153,68 +168,227 @@ const App = () => {
   const unreadCount = notifications.filter(n => n.isNew).length;
 
   const growPlant = useCallback((plotId: number) => {
+    // Prevent multiple simultaneous growth calls for the same plot
+    if (growingSproutsRef.current.has(plotId)) return;
+    growingSproutsRef.current.add(plotId);
+
     setTimeout(() => {
-      setGarden(currentGarden => {
-        // Only grow the plant, logic for reproduction is handled by effect
-        return currentGarden.map(p => 
-          p.id === plotId && p.plant ? { ...p, plant: { ...p.plant, stage: 'grown' as const } } : p
-        );
-      });
-      // Trigger the reproduction check effect
-      setLastGrownId(plotId);
-    }, 2000);
-  }, []);
-
-  // Effect: Weather Cycle
-  useEffect(() => {
-    const weatherTimer = setInterval(() => {
-        setForecast(currentForecast => {
-            const [nextWeather, ...rest] = currentForecast;
-            setWeather(nextWeather); // Update current weather
-            
-            // Add a new random forecast to the end
-            const newRandomWeather: WeatherType = Math.random() < 0.3 ? 'raining' : 'sunny';
-            return [...rest, newRandomWeather];
+        let plantGrew = false;
+        setGarden(currentGarden => {
+            const plot = currentGarden.find(p => p.id === plotId);
+            // Only grow if it's still a sprout
+            if (plot?.plant?.stage === 'sprout') {
+                plantGrew = true;
+                return currentGarden.map(p =>
+                    p.id === plotId ? { ...p, plant: { ...p.plant, stage: 'grown' as const } } : p
+                );
+            }
+            return currentGarden; // No change needed
         });
-    }, 60000); // Change weather every 60 seconds
 
-    return () => clearInterval(weatherTimer);
+        if (plantGrew) {
+            setLastGrownId(plotId);
+        }
+        // Clean up ref after operation
+        growingSproutsRef.current.delete(plotId);
+    }, 2000);
+  }, [setLastGrownId]);
+
+  // FIX: Moved determineOffspringGenetics function before its usage in useEffects to prevent declaration errors.
+  // Logic for determining offspring genetics (Size rules)
+  const determineOffspringGenetics = useCallback((plantA: PlantState, plantB: PlantState) => {
+      let isInbreeding = false;
+      let isHybrid = false;
+
+      // Logic Priority 1: Heterosis (Two small parents -> Big Hybrid)
+      if (plantA.isSmall && plantB.isSmall) {
+          isHybrid = true;
+          isInbreeding = false;
+      } else {
+            // Logic Priority 2: Inbreeding (Parent-Child or Siblings -> Small)
+            // Also covers Self-pollination where plantA.instanceId === plantB.instanceId
+          const isAparentOfB = plantB.parentIds?.includes(plantA.instanceId);
+          const isBparentOfA = plantA.parentIds?.includes(plantB.instanceId);
+          const isSelf = plantA.instanceId === plantB.instanceId;
+          
+          isInbreeding = isAparentOfB || isBparentOfA || isSelf;
+      }
+      
+      return { isInbreeding, isHybrid };
   }, []);
 
-  // Effect: Apply Rain effect
-  useEffect(() => {
-    if (weather === 'raining') {
-        const dryPlotIds = garden.filter(p => !p.isWatered).map(p => p.id);
-        
-        if (dryPlotIds.length > 0) {
-            addNotification("Chuva Forte 🌧️", "A chuva regou toda a sua horta! Brotos em terra seca começaram a crescer.");
+    const checkCornPollination = useCallback(() => {
+        setGarden(currentGarden => {
+            const availableCorns = currentGarden.filter(p =>
+                p.plant?.type === 'Milho' &&
+                p.plant.stage === 'grown' &&
+                !reproducedPlantsRef.current.has(p.plant.instanceId)
+            );
+
+            if (availableCorns.length < 2) {
+                return currentGarden;
+            }
+
+            const shuffledCorns = [...availableCorns].sort(() => 0.5 - Math.random());
+            const availableSpots = currentGarden
+                .map((plot, id) => !plot.plant ? id : -1)
+                .filter(id => id !== -1)
+                .sort(() => 0.5 - Math.random());
+
+            const pairs = [];
+            for (let i = 0; i < Math.floor(shuffledCorns.length / 2); i++) {
+                pairs.push([shuffledCorns[i * 2], shuffledCorns[i * 2 + 1]]);
+            }
             
+            if (pairs.length === 0) return currentGarden;
+
+            const newPlantsInfo: { plotId: number; plant: PlantState; isHybrid: boolean; isInbreeding: boolean }[] = [];
+            const newConnections: Connection[] = [];
+            
+            pairs.forEach((pair) => {
+                const [cornA, cornB] = pair;
+                // Clone availableSpots for this iteration to avoid permanently removing spots if pairing fails
+                const tempAvailableSpots = [...availableSpots];
+                const emptySpotId = tempAvailableSpots.pop();
+
+
+                if (emptySpotId !== undefined && cornA.plant && cornB.plant) {
+                    reproducedPlantsRef.current.add(cornA.plant.instanceId);
+                    reproducedPlantsRef.current.add(cornB.plant.instanceId);
+
+                    // Add two-way arrows for visual feedback
+                    newConnections.push({ from: cornA.id, to: cornB.id, type: 'Milho' });
+                    newConnections.push({ from: cornB.id, to: cornA.id, type: 'Milho' });
+
+                    const { isInbreeding, isHybrid } = determineOffspringGenetics(cornA.plant, cornB.plant);
+                    const newPlant = createPlant('Milho', [cornA.plant.instanceId, cornB.plant.instanceId], isInbreeding, isHybrid);
+                    newPlantsInfo.push({ plotId: emptySpotId, plant: newPlant, isHybrid, isInbreeding });
+                    
+                    // "Use up" the spot
+                    availableSpots.pop();
+                }
+            });
+
+            if (newConnections.length > 0) {
+                setActiveConnections(newConnections);
+                setIsPollinating(true); // Start animation
+
+                setTimeout(() => {
+                    setActiveConnections([]);
+                    setIsPollinating(false); // Stop animation
+
+                    if (newPlantsInfo.length > 0) {
+                        setGarden(g => {
+                            const newGarden = [...g];
+                            newPlantsInfo.forEach(info => {
+                                // Double-check if the spot is still free, another process might have taken it
+                                if (!newGarden[info.plotId].plant) {
+                                    newGarden[info.plotId].plant = info.plant;
+                                }
+                            });
+                            return newGarden;
+                        });
+                        
+                        newPlantsInfo.forEach(info => {
+                            if (info.isHybrid) addNotification("Vigor Híbrido (Heterose) 🚀", "O vento cruzou duas plantas e gerou um híbrido vigoroso!");
+                            else if (info.isInbreeding) addNotification("Depressão Endogâmica 🧬", "O vento cruzou plantas parentes, gerando uma menor.");
+                            else addNotification("Polinização do Milho 🌽", "O vento polinizou um par de milhos com sucesso!");
+                        });
+                    }
+                }, 3500);
+            }
+            
+            return currentGarden;
+        });
+    }, [determineOffspringGenetics, addNotification]);
+
+  const advanceWeather = useCallback(() => {
+    setForecast(currentForecast => {
+        const [nextWeather, ...rest] = currentForecast;
+        setWeather(nextWeather); // Update current weather
+        
+        // Add a new random forecast to the end
+        const weathers: WeatherType[] = ['sunny', 'sunny', 'raining', 'sunny_windy', 'raining_windy'];
+        const newRandomWeather = weathers[Math.floor(Math.random() * weathers.length)];
+        return [...rest, newRandomWeather];
+    });
+  }, []);
+
+  // Effect: Periodic Corn Pollination Check during Wind
+  useEffect(() => {
+      const isCurrentlyWindy = weather.includes('_windy');
+
+      if (isCurrentlyWindy) {
+          const pollinationInterval = setInterval(() => {
+              checkCornPollination();
+          }, 5000); // Check every 5 seconds
+
+          return () => clearInterval(pollinationInterval);
+      }
+  }, [weather, checkCornPollination]);
+
+  // Combined Weather Effects Logic
+  useEffect(() => {
+    const prevWeather = prevWeatherRef.current;
+    
+    const isCurrentlyWindy = weather.includes('_windy');
+    const wasPreviouslyWindy = prevWeather ? prevWeather.includes('_windy') : false;
+    const isCurrentlyRaining = weather.includes('raining');
+    const wasPreviouslyRaining = prevWeather ? prevWeather.includes('raining') : false;
+
+    // --- Set visual state based on current weather ---
+    setIsWindy(isCurrentlyWindy);
+
+    // --- Handle weather change LOGIC ---
+
+    // RAIN LOGIC (runs if it is raining now)
+    if (isCurrentlyRaining) {
+        const dryPlots = garden.filter(p => !p.isWatered);
+        const sproutsOnWateredPlots = garden.filter(p => p.isWatered && p.plant?.stage === 'sprout');
+
+        sproutsOnWateredPlots.forEach(plot => {
+            growPlant(plot.id);
+        });
+
+        if (dryPlots.length > 0) {
             setGarden(currentGarden => 
                 currentGarden.map(p => 
-                    dryPlotIds.includes(p.id) ? { ...p, isWatered: true } : p
+                    !p.isWatered ? { ...p, isWatered: true } : p
                 )
             );
-            
-            const sproutsInDryPlots = garden.filter(p => dryPlotIds.includes(p.id) && p.plant?.stage === 'sprout').map(p => p.id);
-            sproutsInDryPlots.forEach((plotId, index) => {
-                setTimeout(() => growPlant(plotId), index * 200); // Stagger growth animation
+
+            const sproutsOnDryPlots = dryPlots.filter(p => p.plant?.stage === 'sprout');
+            sproutsOnDryPlots.forEach(plot => {
+                growPlant(plot.id);
             });
         }
     }
-  }, [weather, garden, addNotification, growPlant]);
-
-  // Effect: When sun comes after rain, dry the plots
-  useEffect(() => {
-    const prevWeather = prevWeatherRef.current;
-    if (prevWeather === 'raining' && weather === 'sunny') {
-        addNotification("O Sol Chegou! ☀️", "O sol forte secou toda a horta que estava molhada pela chuva.");
+    // DRY PLOTS AFTER RAIN LOGIC (runs if it was raining, but not anymore)
+    else if (wasPreviouslyRaining && !isCurrentlyRaining) {
         setGarden(currentGarden => 
             currentGarden.map(p => ({ ...p, isWatered: false }))
         );
     }
-    // Update ref for next render
+
+    // WIND LOGIC
+    if (!wasPreviouslyWindy && isCurrentlyWindy) {
+        reproducedPlantsRef.current.clear();
+        const grownCorns = garden.filter(p => p.plant?.type === 'Milho' && p.plant.stage === 'grown');
+        if (grownCorns.length < 2) {
+            setIsPollinating(false);
+            setTimeout(() => addNotification("Vento sem Sementes 🌬️", "O vento soprou, mas não havia milhos suficientes para polinizar."), 1000);
+        } else {
+            checkCornPollination();
+        }
+    } 
+    else if (wasPreviouslyWindy && !isCurrentlyWindy) {
+        setIsPollinating(false);
+        reproducedPlantsRef.current.clear();
+    }
+
     prevWeatherRef.current = weather;
-  }, [weather, addNotification]);
+
+}, [weather, garden, addNotification, growPlant, checkCornPollination]);
 
 
   // Effect 1: State Transitions based on Garden Conditions (Bees)
@@ -290,27 +464,49 @@ const App = () => {
     }
   }, [selectedTool]);
 
-  // Logic for determining offspring genetics (Size rules)
-  const determineOffspringGenetics = useCallback((plantA: PlantState, plantB: PlantState) => {
-      let isInbreeding = false;
-      let isHybrid = false;
+  // Effect: Position the bacterium for its animation
+  useEffect(() => {
+    if (bacteriumAnimation.active && bacteriumAnimation.targetPlotId !== null && bacteriumRef.current) {
+        const plotElement = document.querySelector(`.garden-plot[aria-label^="Lote de terra ${bacteriumAnimation.targetPlotId + 1}"]`);
+        const appContainer = document.querySelector('.app-container');
+        const bacteriumElement = bacteriumRef.current;
 
-      // Logic Priority 1: Heterosis (Two small parents -> Big Hybrid)
-      if (plantA.isSmall && plantB.isSmall) {
-          isHybrid = true;
-          isInbreeding = false;
-      } else {
-            // Logic Priority 2: Inbreeding (Parent-Child or Siblings -> Small)
-            // Also covers Self-pollination where plantA.instanceId === plantB.instanceId
-          const isAparentOfB = plantB.parentIds?.includes(plantA.instanceId);
-          const isBparentOfA = plantA.parentIds?.includes(plantB.instanceId);
-          const isSelf = plantA.instanceId === plantB.instanceId;
-          
-          isInbreeding = isAparentOfB || isBparentOfA || isSelf;
-      }
-      
-      return { isInbreeding, isHybrid };
-  }, []);
+        if (plotElement && appContainer) {
+            const plotRect = plotElement.getBoundingClientRect();
+            const appRect = appContainer.getBoundingClientRect();
+
+            const targetX = (plotRect.left - appRect.left) + (plotRect.width / 2);
+            const targetY = (plotRect.top - appRect.top) + (plotRect.height / 2);
+
+            const startSide = Math.floor(Math.random() * 4);
+            let startX, startY;
+
+            switch(startSide) {
+                case 0: // Top
+                    startX = Math.random() * appRect.width;
+                    startY = -50;
+                    break;
+                case 1: // Right
+                    startX = appRect.width + 50;
+                    startY = Math.random() * appRect.height;
+                    break;
+                case 2: // Bottom
+                    startX = Math.random() * appRect.width;
+                    startY = appRect.height + 50;
+                    break;
+                default: // Left
+                    startX = -50;
+                    startY = Math.random() * appRect.height;
+            }
+
+            bacteriumElement.style.setProperty('--target-x', `${targetX}px`);
+            bacteriumElement.style.setProperty('--target-y', `${targetY}px`);
+            bacteriumElement.style.setProperty('--start-x', `${startX}px`);
+            bacteriumElement.style.setProperty('--start-y', `${startY}px`);
+        }
+    }
+  }, [bacteriumAnimation]);
+
 
   const findNeighbor = (centerId: number, type: PlantType): number | null => {
         const size = 4;
@@ -369,13 +565,16 @@ const App = () => {
         phenotype, 
         parentIds,
         isSmall,
-        isHybrid
+        isHybrid,
+        isBoosted: false
     };
   };
 
   // Reusable function for Pollination logic (Pumpkin, Apple, Sunflower)
   // Returns true if a pollination was initiated
-  const tryPollination = useCallback((currentGarden: PlotState[], plantType: PlantType, color: string) => {
+  // FIX: Narrowed the type of `plantType` to match its intended use with bee-pollinated plants.
+  // This resolves a type error where the broader `PlantType` was not assignable to `Connection['type']`.
+  const tryPollination = useCallback((currentGarden: PlotState[], plantType: 'Abóbora' | 'Girassol' | 'Maçã') => {
       if (beeState !== 'visible') return false;
       
       // 1. Identify seekers: Grown plants of type that haven't reproduced yet
@@ -415,7 +614,7 @@ const App = () => {
       const partnerId = partner.plant!.instanceId;
 
       // EXECUTE
-      setActiveConnection({ from: source.id, to: partner.id, color: color });
+      setActiveConnections([{ from: source.id, to: partner.id, type: plantType }]);
       setAnimatingPlots([source.id, partner.id]);
 
       // Mark source as used immediately
@@ -426,7 +625,7 @@ const App = () => {
       }
 
       setTimeout(() => {
-          setActiveConnection(null);
+          setActiveConnections([]);
           setAnimatingPlots([]);
 
           const emptySpotId = findEmptySpot(source.id, currentGarden);
@@ -484,13 +683,13 @@ const App = () => {
       if (beeState === 'visible') {
           const timer = setTimeout(() => {
               // Try Pumpkin
-              const pumpkinSuccess = tryPollination(garden, 'Abóbora', '#FF8C00');
+              const pumpkinSuccess = tryPollination(garden, 'Abóbora');
               // Try Sunflower (Scenario A)
-              const sunflowerSuccess = tryPollination(garden, 'Girassol', '#FFD700');
+              const sunflowerSuccess = tryPollination(garden, 'Girassol');
 
               if (!pumpkinSuccess && !sunflowerSuccess) {
                    // Try Apple
-                   tryPollination(garden, 'Maçã', '#ff4d4d');
+                   tryPollination(garden, 'Maçã');
               }
           }, 500);
           return () => clearTimeout(timer);
@@ -509,46 +708,14 @@ const App = () => {
     }
 
     const plantType = grownPlot.plant.type;
+    
+    // Immediate check for corn pollination when it grows during windy weather
+    if (plantType === 'Milho' && weather.includes('_windy')) {
+        checkCornPollination();
+    }
 
-    if (plantType === 'Milho') {
-        // CORN LOGIC
-        const otherCorns = garden.filter(p => p.id !== lastGrownId && p.plant?.type === 'Milho' && p.plant.stage === 'grown');
 
-        if (otherCorns.length > 0) {
-            const partner = otherCorns[Math.floor(Math.random() * otherCorns.length)];
-
-            setActiveConnection({ from: partner.id, to: lastGrownId, color: '#FFD700' });
-            setIsWindy(true);
-
-            setTimeout(() => {
-                setIsWindy(false);
-                setActiveConnection(null); 
-                
-                const emptySpotId = findEmptySpot(lastGrownId, garden);
-                
-                if (emptySpotId !== null && grownPlot.plant && partner.plant) {
-                    const { isInbreeding, isHybrid } = determineOffspringGenetics(grownPlot.plant, partner.plant);
-
-                    setGarden(prev => {
-                        const newGarden = [...prev];
-                        newGarden[emptySpotId].plant = createPlant(
-                            'Milho', 
-                            [grownPlot.plant!.instanceId, partner.plant!.instanceId], 
-                            isInbreeding,
-                            isHybrid
-                        );
-                        return newGarden;
-                    });
-                    
-                    setTimeout(() => {
-                        if (isHybrid) addNotification("Vigor Híbrido (Heterose) 🚀", "Sua planta cresceu mais forte! O cruzamento gerou um híbrido vigoroso.");
-                        else if (isInbreeding) addNotification("Depressão Endogâmica 🧬", "Sua planta diminuiu devido ao cruzamento entre parentes.");
-                        else addNotification("Polinização do Milho", "O cruzamento do milho ocorre principalmente pela polinização cruzada, impulsionada pelo vento.");
-                    }, 1500);
-                }
-            }, 4000); 
-        }
-    } else if (plantType === 'Abóbora') {
+    if (plantType === 'Abóbora') {
         // PUMPKIN LOGIC - Fallback for Self-Pollination ONLY
         
         const currentPlantId = grownPlot.plant.instanceId;
@@ -587,7 +754,7 @@ const App = () => {
 
             // Notification trigger
              if (beeState !== 'visible') {
-                  addNotification("Auto-polinização (Abóbora)", "Sem abelhas ou parceiros por perto, a planta realizou a auto-fecundação. Isso aumenta a chance de depressão endogâmica.");
+                  addNotification("Auto-polinização (Abóbora)", "Sem parceiros por perto, a planta realizou a auto-fecundação. Isso aumenta a chance de depressão endogâmica.");
              }
 
         }, 30000); // 30 Seconds delay
@@ -638,44 +805,63 @@ const App = () => {
         }
 
     } else if (plantType === 'Feijão') {
-        // FEIJÃO LOGIC - Strict Self-Pollination (Autogamy)
         const currentPlantId = grownPlot.plant.instanceId;
 
-        // Delay to simulate self-pollination wait time
+        // --- BACTERIUM ANIMATION ---
+        setAnimatingPlots([lastGrownId]); 
+        setBacteriumAnimation({ active: true, targetPlotId: lastGrownId });
+
         setTimeout(() => {
-             setAnimatingPlots([lastGrownId]); // Pulse animation on the parent
-             
-             setTimeout(() => {
-                setAnimatingPlots([]);
-                setGarden(currentGarden => {
-                    // Verify parent still exists
-                    const parentPlot = currentGarden[lastGrownId];
-                    if (!parentPlot?.plant || parentPlot.plant.instanceId !== currentPlantId) return currentGarden;
+            setAnimatingPlots([]);
+            setBacteriumAnimation({ active: false, targetPlotId: null });
 
-                    // Self-pollination ignores bees and partners. Just finds a spot.
-                    const emptySpotId = findEmptySpot(lastGrownId, currentGarden);
+            setGarden(currentGarden => {
+                const targetPlot = currentGarden.find(p => p.id === lastGrownId);
+                if (targetPlot?.plant?.instanceId === currentPlantId) {
+                    return currentGarden.map(p =>
+                        p.id === lastGrownId
+                            ? { ...p, plant: { ...p.plant!, isBoosted: true } }
+                                                        : p
+                    );
+                }
+                return currentGarden;
+            });
+            addNotification(
+                "Fixação de Nitrogênio 🦠",
+                "Bactérias benéficas formaram nódulos nas raízes do seu feijão, fornecendo-lhe nitrogênio e tornando a planta mais forte e maior!"
+            );
+
+            // --- SELF-POLLINATION (after fixation) ---
+            setTimeout(() => {
+                 setAnimatingPlots([lastGrownId]);
+                 
+                 setTimeout(() => {
+                    setAnimatingPlots([]);
+                    setGarden(currentGarden => {
+                        const parentPlot = currentGarden[lastGrownId];
+                        if (!parentPlot?.plant || parentPlot.plant.instanceId !== currentPlantId) return currentGarden;
+
+                        const emptySpotId = findEmptySpot(lastGrownId, currentGarden);
+                        
+                        if (emptySpotId !== null) {
+                            const newGarden = [...currentGarden];
+                            newGarden[emptySpotId].plant = createPlant(
+                                'Feijão',
+                                [currentPlantId],
+                                false,
+                                false
+                            );
+                            return newGarden;
+                        }
+                        return currentGarden;
+                    });
                     
-                    if (emptySpotId !== null) {
-                        // Genetic Rule: Self-pollination normally causes inbreeding (Small),
-                        // BUT Feijão is adapted to autogamy and maintains normal vigor.
-                        
-                        const newGarden = [...currentGarden];
-                        newGarden[emptySpotId].plant = createPlant(
-                            'Feijão',
-                            [currentPlantId], // Parent is itself
-                            false, // Normal size (Special rule for Feijão)
-                            false // Not Hybrid
-                        );
-                        
-                        return newGarden;
-                    }
-                    return currentGarden;
-                });
-                
-                addNotification("Auto-fecundação (Feijão) 🫘", "O feijão é uma planta autógama. Ele se reproduz sozinho mantendo seu tamanho normal, sem perda de vigor!");
-             }, 1500);
+                    addNotification("Auto-fecundação (Feijão) 🫘", "O feijão é uma planta autógama. Ele se reproduz sozinho mantendo seu tamanho normal, sem perda de vigor!");
+                 }, 1500);
 
-        }, 30000); // 30 Seconds delay
+            }, 30000);
+
+        }, 6000); // Animation duration
 
     } else {
         // GENERIC FALLBACK
@@ -686,7 +872,7 @@ const App = () => {
     }
 
     setLastGrownId(null); // Reset trigger
-  }, [lastGrownId, garden, beeState, determineOffspringGenetics, addNotification]);
+  }, [lastGrownId, garden, beeState, determineOffspringGenetics, addNotification, weather, checkCornPollination]);
   
   const handlePlotClick = useCallback((plotId: number) => {
     const plot = garden.find(p => p.id === plotId);
@@ -752,59 +938,87 @@ const App = () => {
                 addNotification("Alvo Inválido", "Você só pode polinizar plantas adultas da mesma espécie.");
             }
         }
-    } else {
-        // --- REGULAR TOOL LOGIC ---
-        setGarden(currentGarden => {
-          const newGarden = [...currentGarden];
-          const currentPlot = newGarden.find(p => p.id === plotId);
-          if (!currentPlot) return currentGarden;
+    } else if (selectedTool === 'colher' && plot.plant?.stage === 'grown') {
+        // --- UNIFIED HARVEST LOGIC ---
+        const harvestedPlot = plot; // The plot at the time of click
+        const harvestedPlant = harvestedPlot.plant;
+        const type = harvestedPlant.type;
 
-          if (selectedTool && Object.keys(PLANT_CONFIG).includes(selectedTool) && !currentPlot.plant) {
+        // 1. Calculate size and update inventory immediately based on the state AT CLICK TIME
+        let size: PlantSize = 'normal';
+        if (harvestedPlant.isHybrid || harvestedPlot.fertilizer || harvestedPlant.isBoosted) size = 'large';
+        else if (harvestedPlant.isSmall) size = 'small';
+
+        setInventory(currentInventory => {
+            const plantCounts = currentInventory[type] || { small: 0, normal: 0, large: 0 };
+            return {
+                ...currentInventory,
+                [type]: { ...plantCounts, [size]: plantCounts[size] + 1 }
+            };
+        });
+
+        // 2. Handle garden updates and side-effects
+        if (type === 'Feijão') {
+            const otherPlantPlotIds = garden.filter(p => p.id !== plotId && p.plant).map(p => p.id);
+            setFertilizingPlots(otherPlantPlotIds);
+
+            setTimeout(() => {
+                setFertilizingPlots([]);
+                setGarden(currentGarden => {
+                    return currentGarden.map(p => {
+                        if (otherPlantPlotIds.includes(p.id)) return { ...p, fertilizer: 'organic' };
+                        if (p.id === plotId) return { ...p, plant: null, isWatered: false, fertilizer: null };
+                        return p;
+                    });
+                });
+                
+                addNotification(
+                    "Dica de Colheita (Feijão) 🌱", 
+                    "Corte a planta na superfície, deixando as raízes no solo. Os nódulos das bactérias ficam e liberam nitrogênio no solo."
+                );
+                 addNotification(
+                    "Adubação Verde! 🌱✨",
+                    "As raízes do feijão liberaram nitrogênio, fertilizando todas as outras plantas na sua horta!"
+                );
+
+            }, 3500); // 1.5s animation + 2s delay
+        } else {
+            // For other plants, just update the garden immediately
+            setGarden(currentGarden => currentGarden.map(p => (p.id === plotId ? { ...p, plant: null, isWatered: false, fertilizer: null } : p)));
+        }
+    } else {
+        // --- OTHER TOOLS LOGIC ---
+        setGarden(currentGarden => {
+            const newGarden = [...currentGarden];
+            const currentPlot = newGarden.find(p => p.id === plotId);
+            if (!currentPlot) return currentGarden;
+
+            if (selectedTool && Object.keys(PLANT_CONFIG).includes(selectedTool) && !currentPlot.plant) {
             currentPlot.plant = createPlant(selectedTool as PlantType);
-            if (weather === 'raining') {
+            if (weather.includes('raining')) {
                 currentPlot.isWatered = true;
                 growPlant(currentPlot.id);
             }
             return newGarden;
-          }
-          
-          if (selectedTool === 'regador' && currentPlot.plant?.stage === 'sprout' && !currentPlot.isWatered) {
+            }
+            
+            if (selectedTool === 'regador' && currentPlot.plant?.stage === 'sprout' && !currentPlot.isWatered) {
             currentPlot.isWatered = true;
             growPlant(currentPlot.id);
             return newGarden;
-          }
+            }
 
-          if (selectedTool === 'adubo_organico' && currentPlot.plant && !currentPlot.fertilizer) {
-             currentPlot.fertilizer = 'organic';
-             return newGarden;
-          }
+            if (selectedTool === 'adubo_organico' && currentPlot.plant && !currentPlot.fertilizer) {
+                currentPlot.fertilizer = 'organic';
+                return newGarden;
+            }
 
-          if (selectedTool === 'agrotoxico' && currentPlot.plant && !currentPlot.fertilizer) {
-             currentPlot.fertilizer = 'chemical';
-             return newGarden;
-          }
-
-          if (selectedTool === 'colher' && currentPlot.plant?.stage === 'grown') {
-            const type = currentPlot.plant.type;
-            let size: PlantSize = 'normal';
-            if (currentPlot.plant.isHybrid || currentPlot.fertilizer) size = 'large';
-            else if (currentPlot.plant.isSmall) size = 'small';
-
-            setInventory(currentInventory => {
-                const plantCounts = currentInventory[type] || { small: 0, normal: 0, large: 0 };
-                return {
-                    ...currentInventory,
-                    [type]: { ...plantCounts, [size]: plantCounts[size] + 1 }
-                };
-            });
-
-            currentPlot.plant = null;
-            currentPlot.isWatered = false;
-            currentPlot.fertilizer = null;
-            return newGarden;
-          }
-
-          return currentGarden;
+            if (selectedTool === 'agrotoxico' && currentPlot.plant && !currentPlot.fertilizer) {
+                currentPlot.fertilizer = 'chemical';
+                return newGarden;
+            }
+            
+            return currentGarden;
         });
     }
   }, [selectedTool, growPlant, weather, pollenSack, garden, determineOffspringGenetics, addNotification]);
@@ -818,11 +1032,45 @@ const App = () => {
   };
 
   const getWeatherIcon = (weatherType: WeatherType) => {
-    return weatherType === 'raining' ? '🌧️' : '☀️';
+    switch (weatherType) {
+        case 'raining': return '🌧️';
+        case 'sunny_windy': return '☀️🌬️';
+        case 'raining_windy': return '🌧️🌬️';
+        default: return '☀️';
+    }
   }
 
   return (
-    <div className={`app-container ${weather === 'raining' ? 'is-raining' : ''}`}>
+    <div className={`app-container ${weather.includes('raining') ? 'is-raining' : ''}`}>
+      {/* Wind Overlay */}
+      {isWindy && (
+          <div className={`wind-overlay ${isPollinating ? 'is-pollinating' : ''}`}>
+              <div className="wind-line"></div>
+              <div className="wind-line"></div>
+              <div className="wind-line"></div>
+              <div className="wind-line"></div>
+              <div className="wind-line"></div>
+              <div className="wind-line"></div>
+              <div className="wind-line"></div>
+              <div className="wind-line"></div>
+              <div className="wind-line"></div>
+              <div className="wind-line"></div>
+              <div className="wind-line"></div>
+              <div className="wind-line"></div>
+              {/* Pollen particles */}
+              <div className="wind-pollen"></div>
+              <div className="wind-pollen"></div>
+              <div className="wind-pollen"></div>
+              <div className="wind-pollen"></div>
+              <div className="wind-pollen"></div>
+          </div>
+      )}
+      
+      {/* Bacterium Animation */}
+      {bacteriumAnimation.active && (
+        <div ref={bacteriumRef} className="bacterium-animation">🦠</div>
+      )}
+      
       {/* NOTIFICATION SYSTEM UI */}
       <div className="notification-wrapper">
           <button 
@@ -860,7 +1108,6 @@ const App = () => {
 
       {/* WEATHER FORECAST UI */}
       <div className="weather-forecast">
-          <h3>Previsão do Tempo</h3>
           <div className="forecast-now">
               <span>Agora:</span>
               <span className="weather-icon">{getWeatherIcon(weather)}</span>
@@ -872,6 +1119,14 @@ const App = () => {
                   </div>
               ))}
           </div>
+          <button 
+            className="advance-weather-button" 
+            onClick={advanceWeather}
+            data-tooltip="Avançar tempo"
+            aria-label="Avançar previsão do tempo"
+          >
+            ⏭️
+          </button>
       </div>
 
       <header className="header">
@@ -880,56 +1135,50 @@ const App = () => {
       </header>
       
       <main className={`garden-container ${pollenSack ? 'carrying-pollen' : ''}`}>
-        {/* Wind Overlay */}
-        {isWindy && (
-            <div className="wind-overlay">
-                <div className="wind-line"></div>
-                <div className="wind-line"></div>
-                <div className="wind-line"></div>
-                <div className="wind-line"></div>
-                <div className="wind-line"></div>
-                <div className="wind-line"></div>
-                <div className="wind-line"></div>
-                {/* Pollen particles */}
-                <div className="wind-pollen"></div>
-                <div className="wind-pollen"></div>
-                <div className="wind-pollen"></div>
-                <div className="wind-pollen"></div>
-                <div className="wind-pollen"></div>
-            </div>
-        )}
-
         {/* Connection Overlay for Corn and Pumpkin */}
         <svg className="connection-overlay" viewBox="0 0 4 4" preserveAspectRatio="none">
              <defs>
-                <marker id="arrowhead" markerWidth="5" markerHeight="3.5" refX="4" refY="1.75" orient="auto">
-                    <polygon points="0 0, 5 1.75, 0 3.5" fill={activeConnection?.color || "#FFD700"} />
+                <marker id="arrowhead-pumpkin" markerWidth="5" markerHeight="3.5" refX="4" refY="1.75" orient="auto">
+                    <polygon points="0 0, 5 1.75, 0 3.5" fill="#FF8C00" />
+                </marker>
+                <marker id="arrowhead-sunflower" markerWidth="5" markerHeight="3.5" refX="4" refY="1.75" orient="auto">
+                    <polygon points="0 0, 5 1.75, 0 3.5" fill="#FFD700" />
+                </marker>
+                <marker id="arrowhead-apple" markerWidth="5" markerHeight="3.5" refX="4" refY="1.75" orient="auto">
+                    <polygon points="0 0, 5 1.75, 0 3.5" fill="#ff4d4d" />
+                </marker>
+                <marker id="arrowhead-corn" markerWidth="5" markerHeight="3.5" refX="4" refY="1.75" orient="auto">
+                    <polygon points="0 0, 5 1.75, 0 3.5" fill="#fefcbf" />
                 </marker>
             </defs>
-            {activeConnection && (
-                <line 
-                    x1={getCoordinates(activeConnection.from).x} 
-                    y1={getCoordinates(activeConnection.from).y} 
-                    x2={getCoordinates(activeConnection.to).x} 
-                    y2={getCoordinates(activeConnection.to).y} 
-                    className="connection-line"
-                    stroke={activeConnection.color || "#FFD700"}
-                    markerEnd="url(#arrowhead)"
-                />
-            )}
+            {activeConnections.map((conn, index) => {
+                const style = CONNECTION_STYLES[conn.type];
+                return (
+                    <line 
+                        key={index}
+                        x1={getCoordinates(conn.from).x} 
+                        y1={getCoordinates(conn.from).y} 
+                        x2={getCoordinates(conn.to).x} 
+                        y2={getCoordinates(conn.to).y} 
+                        className={`connection-line ${conn.type === 'Milho' ? 'corn-connection' : 'bee-connection'}`}
+                        stroke={style.color}
+                        markerEnd={style.marker}
+                    />
+                );
+            })}
         </svg>
 
         <div className="garden-grid">
           {garden.map(plot => (
             <div
               key={plot.id}
-              className={`garden-plot ${plot.isWatered ? 'watered' : ''} ${plot.fertilizer ? 'fertilized' : ''} ${plot.fertilizer === 'chemical' ? 'chemical-soil' : ''} ${animatingPlots.includes(plot.id) ? 'combining' : ''} ${pollenSack?.sourcePlotId === plot.id ? 'pollen-source' : ''}`}
+              className={`garden-plot ${plot.isWatered ? 'watered' : ''} ${plot.fertilizer ? 'fertilized' : ''} ${plot.fertilizer === 'chemical' ? 'chemical-soil' : ''} ${animatingPlots.includes(plot.id) ? 'combining' : ''} ${fertilizingPlots.includes(plot.id) ? 'fertilizing-effect' : ''} ${pollenSack?.sourcePlotId === plot.id ? 'pollen-source' : ''}`}
               onClick={() => handlePlotClick(plot.id)}
               role="button"
               aria-label={`Lote de terra ${plot.id + 1}. ${plot.plant ? `Contém ${plot.plant.phenotype}` : 'Vazio'}`}
             >
               {plot.plant && (
-                <div className={`plant ${plot.fertilizer ? 'plant-large' : ''} ${plot.plant.isSmall ? 'plant-small' : ''} ${plot.plant.isHybrid ? 'plant-hybrid' : ''}`}>
+                <div className={`plant ${plot.fertilizer ? 'plant-large' : ''} ${plot.plant.isSmall ? 'plant-small' : ''} ${plot.plant.isHybrid ? 'plant-hybrid' : ''} ${plot.plant.isBoosted ? 'boosted' : ''}`}>
                   {plot.plant.stage === 'sprout' ? (
                     <div className="sprout-container">
                       <span className="sprout-emoji">🌱</span>
@@ -1064,7 +1313,7 @@ const App = () => {
       </div>
 
       {/* Rain Animation */}
-      {weather === 'raining' && (
+      {weather.includes('raining') && (
         <div className="rain-container" aria-hidden="true">
             {Array.from({ length: 50 }).map((_, i) => (
                 <div key={i} className="raindrop" style={{ 
