@@ -69,12 +69,9 @@ const App = () => {
 
   // --- NOTIFICATION SYSTEM ---
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [activeModalNotification, setActiveModalNotification] = useState<Notification | null>(null);
+  const [modalStack, setModalStack] = useState<Notification[]>([]);
   const [isHistoryOpen, setHistoryOpen] = useState(false);
   
-  // Track which message titles have been shown as a modal to prevent repetition
-  const seenTitlesRef = useRef<Set<string>>(new Set());
-
   // Animation state
   const [beeState, setBeeState] = useState<BeeState>('hidden');
   const [manualBeeMode, setManualBeeMode] = useState(false); // New state for manual bee button
@@ -106,11 +103,12 @@ const App = () => {
 
       setNotifications(prev => [newNote, ...prev]);
 
-      // Only show the center modal if the user hasn't seen this title before
-      if (!seenTitlesRef.current.has(title)) {
-          seenTitlesRef.current.add(title);
-          setActiveModalNotification(newNote);
-      }
+      // Add to the top of the modal stack
+      setModalStack(prev => [newNote, ...prev]);
+  }, []);
+  
+  const closeTopModal = useCallback(() => {
+    setModalStack(prev => prev.slice(1));
   }, []);
 
   const handleOpenHistory = () => {
@@ -768,7 +766,14 @@ const App = () => {
             >
               {plot.plant && (
                 <div className={`plant ${plot.fertilizer ? 'plant-large' : ''} ${plot.plant.isSmall ? 'plant-small' : ''} ${plot.plant.isHybrid ? 'plant-hybrid' : ''}`}>
-                  {plot.plant.stage === 'sprout' ? '🌱' : plot.plant.phenotype}
+                  {plot.plant.stage === 'sprout' ? (
+                    <div className="sprout-container">
+                      <span className="sprout-emoji">🌱</span>
+                      <span className="sprout-type-icon">{plot.plant.phenotype}</span>
+                    </div>
+                  ) : (
+                    plot.plant.phenotype
+                  )}
                 </div>
               )}
             </div>
@@ -914,13 +919,13 @@ const App = () => {
         </div>
       )}
 
-      {/* Dynamic Central Notification Modal */}
-      {activeModalNotification && (
-        <div className="modal-overlay center-notification-modal" onClick={() => setActiveModalNotification(null)}>
+      {/* Dynamic Central Notification Modal Stack */}
+      {modalStack.length > 0 && (
+        <div className="modal-overlay center-notification-modal" onClick={closeTopModal}>
             <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-                <h2>{activeModalNotification.title}</h2>
-                <p>{activeModalNotification.message}</p>
-                <button className="ok-button" onClick={() => setActiveModalNotification(null)}>Entendi</button>
+                <h2>{modalStack[0].title}</h2>
+                <p>{modalStack[0].message}</p>
+                <button className="ok-button" onClick={closeTopModal}>Entendi</button>
             </div>
         </div>
       )}
