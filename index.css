@@ -512,6 +512,7 @@ body {
   border-color: #5a4a3a;
 }
 
+/* REMOVED: Replaced by fertilizer-icons-container
 .garden-plot.fertilized::after {
   content: '✨';
   position: absolute;
@@ -520,6 +521,7 @@ body {
   font-size: 1rem;
   opacity: 0.7;
 }
+*/
 
 .garden-plot:hover {
   transform: scale(1.03);
@@ -657,6 +659,36 @@ body {
 
 .garden-plot.fertilizing-effect .plant {
   animation: green-boost-effect 1.5s ease-in-out;
+}
+
+/* NEW: Styles for fertilizer icons */
+.fertilizer-icons-container {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  display: flex;
+  flex-direction: row; /* Icons side by side */
+  gap: 3px;
+  z-index: 20; /* Ensure they are above plants */
+  pointer-events: none; /* Important: do not block clicks on the plot */
+}
+
+.fertilizer-icon {
+  font-size: 0.9rem; /* Smaller icons to fit */
+  line-height: 1; /* Remove extra line height */
+  filter: drop-shadow(0 1px 1px rgba(0,0,0,0.2));
+  position: relative; /* For tooltip positioning */
+}
+
+.fertilizer-icon[data-tooltip]::after {
+    top: 100%; /* Position below the icon */
+    left: 50%;
+    transform: translateX(-50%);
+    margin-top: 5px; /* Space between icon and tooltip */
+    white-space: nowrap;
+    width: auto;
+    font-size: 0.75rem; /* Smaller tooltip font */
+    padding: 0.3em 0.6em;
 }
 
 
