@@ -218,6 +218,7 @@ const App = () => {
   }, []);
 
     const checkCornPollination = useCallback(() => {
+        let pollinationHappened = false;
         setGarden(currentGarden => {
             const availableCorns = currentGarden.filter(p =>
                 p.plant?.type === 'Milho' &&
@@ -246,60 +247,58 @@ const App = () => {
             const newConnections: Connection[] = [];
             
             pairs.forEach((pair) => {
-                const [cornA, cornB] = pair;
-                // Clone availableSpots for this iteration to avoid permanently removing spots if pairing fails
-                const tempAvailableSpots = [...availableSpots];
-                const emptySpotId = tempAvailableSpots.pop();
+                if (availableSpots.length === 0) return;
 
+                const [cornA, cornB] = pair;
+                const emptySpotId = availableSpots.pop();
 
                 if (emptySpotId !== undefined && cornA.plant && cornB.plant) {
                     reproducedPlantsRef.current.add(cornA.plant.instanceId);
                     reproducedPlantsRef.current.add(cornB.plant.instanceId);
 
-                    // Add two-way arrows for visual feedback
                     newConnections.push({ from: cornA.id, to: cornB.id, type: 'Milho' });
                     newConnections.push({ from: cornB.id, to: cornA.id, type: 'Milho' });
 
                     const { isInbreeding, isHybrid } = determineOffspringGenetics(cornA.plant, cornB.plant);
                     const newPlant = createPlant('Milho', [cornA.plant.instanceId, cornB.plant.instanceId], isInbreeding, isHybrid);
                     newPlantsInfo.push({ plotId: emptySpotId, plant: newPlant, isHybrid, isInbreeding });
-                    
-                    // "Use up" the spot
-                    availableSpots.pop();
                 }
             });
 
             if (newConnections.length > 0) {
-                setActiveConnections(newConnections);
-                setIsPollinating(true); // Start animation
+              pollinationHappened = true;
+              setActiveConnections(newConnections);
 
-                setTimeout(() => {
-                    setActiveConnections([]);
-                    setIsPollinating(false); // Stop animation
+              setTimeout(() => {
+                  setActiveConnections([]);
+                  if (newPlantsInfo.length > 0) {
+                      setGarden(g => {
+                          const newGarden = [...g];
+                          newPlantsInfo.forEach(info => {
+                              if (!newGarden[info.plotId].plant) {
+                                  newGarden[info.plotId].plant = info.plant;
+                              }
+                          });
+                          return newGarden;
+                      });
 
-                    if (newPlantsInfo.length > 0) {
-                        setGarden(g => {
-                            const newGarden = [...g];
-                            newPlantsInfo.forEach(info => {
-                                // Double-check if the spot is still free, another process might have taken it
-                                if (!newGarden[info.plotId].plant) {
-                                    newGarden[info.plotId].plant = info.plant;
-                                }
-                            });
-                            return newGarden;
-                        });
-                        
-                        newPlantsInfo.forEach(info => {
-                            if (info.isHybrid) addNotification("Vigor Híbrido (Heterose) 🚀", "O vento cruzou duas plantas e gerou um híbrido vigoroso!");
-                            else if (info.isInbreeding) addNotification("Depressão Endogâmica 🧬", "O vento cruzou plantas parentes, gerando uma menor.");
-                            else addNotification("Polinização do Milho 🌽", "O vento polinizou um par de milhos com sucesso!");
-                        });
-                    }
-                }, 3500);
+                      newPlantsInfo.forEach(info => {
+                          if (info.isHybrid) addNotification("Vigor Híbrido (Heterose) 🚀", "O vento cruzou duas plantas e gerou um híbrido vigoroso!");
+                          else if (info.isInbreeding) addNotification("Depressão Endogâmica 🧬", "O vento cruzou plantas parentes, gerando uma menor.");
+                          else addNotification("Polinização do Milho 🌽", "O vento polinizou um par de milhos com sucesso!");
+                      });
+                  }
+              }, 3500);
             }
             
             return currentGarden;
         });
+
+        if (pollinationHappened) {
+            setIsPollinating(true);
+            setTimeout(() => setIsPollinating(false), 3500);
+        }
+
     }, [determineOffspringGenetics, addNotification]);
 
   const advanceWeather = useCallback(() => {
@@ -572,8 +571,6 @@ const App = () => {
 
   // Reusable function for Pollination logic (Pumpkin, Apple, Sunflower)
   // Returns true if a pollination was initiated
-  // FIX: Narrowed the type of `plantType` to match its intended use with bee-pollinated plants.
-  // This resolves a type error where the broader `PlantType` was not assignable to `Connection['type']`.
   const tryPollination = useCallback((currentGarden: PlotState[], plantType: 'Abóbora' | 'Girassol' | 'Maçã') => {
       if (beeState !== 'visible') return false;
       
@@ -716,88 +713,69 @@ const App = () => {
 
 
     if (plantType === 'Abóbora') {
-        // PUMPKIN LOGIC - Fallback for Self-Pollination ONLY
-        
         const currentPlantId = grownPlot.plant.instanceId;
-        
-        // Schedule check for self-pollination if no bees present
         setTimeout(() => {
+            let didSelfPollinate = false;
             setGarden(currentGarden => {
-                const parentPlot = currentGarden[lastGrownId];
-                
-                if (parentPlot && 
-                    parentPlot.plant && 
-                    parentPlot.plant.instanceId === currentPlantId &&
-                    !reproducedPlantsRef.current.has(currentPlantId)
-                ) {
-                        // If Bees are visible now, we SKIP self-pollination and let the bee queue handle it
-                        if (beeState === 'visible') return currentGarden;
-
-                        // Execute Self-Pollination
-                        const emptySpotId = findEmptySpot(lastGrownId, currentGarden);
-                        if (emptySpotId !== null) {
-                            reproducedPlantsRef.current.add(currentPlantId); // Mark used
-
-                            const newGarden = [...currentGarden];
-                            newGarden[emptySpotId].plant = createPlant(
-                            'Abóbora',
-                            [currentPlantId],
-                            true, // Inbreeding
-                            false
-                            );
-                            
-                            return newGarden;
-                        }
+                if (beeState === 'visible') {
+                    return currentGarden;
+                }
+                const parentPlot = currentGarden.find(p => p.id === lastGrownId);
+                if (!parentPlot || !parentPlot.plant || parentPlot.plant.instanceId !== currentPlantId || reproducedPlantsRef.current.has(currentPlantId)) {
+                    return currentGarden;
+                }
+                const hasPartner = currentGarden.some(p => p.plant?.type === 'Abóbora' && p.plant.stage === 'grown' && p.plant.instanceId !== currentPlantId);
+                if (hasPartner) {
+                    return currentGarden;
+                }
+                const emptySpotId = findEmptySpot(lastGrownId, currentGarden);
+                if (emptySpotId !== null) {
+                    reproducedPlantsRef.current.add(currentPlantId);
+                    didSelfPollinate = true;
+                    const newGarden = [...currentGarden];
+                    newGarden[emptySpotId].plant = createPlant('Abóbora', [currentPlantId], true, false);
+                    return newGarden;
                 }
                 return currentGarden;
             });
-
-            // Notification trigger
-             if (beeState !== 'visible') {
-                  addNotification("Auto-polinização (Abóbora)", "Sem parceiros por perto, a planta realizou a auto-fecundação. Isso aumenta a chance de depressão endogâmica.");
-             }
-
-        }, 30000); // 30 Seconds delay
-
-    } else if (plantType === 'Girassol') {
-        // SUNFLOWER LOGIC - Fallback for Self-Pollination ONLY
-        const currentPlantId = grownPlot.plant.instanceId;
-
-        setTimeout(() => {
-            setGarden(currentGarden => {
-                const parentPlot = currentGarden[lastGrownId];
-                
-                if (parentPlot && 
-                    parentPlot.plant && 
-                    parentPlot.plant.instanceId === currentPlantId &&
-                    !reproducedPlantsRef.current.has(currentPlantId)
-                ) {
-                        // If Bees are visible now, we SKIP self-pollination and let the bee queue handle it
-                        if (beeState === 'visible') return currentGarden;
-
-                        // Execute Self-Pollination
-                        const emptySpotId = findEmptySpot(lastGrownId, currentGarden);
-                        if (emptySpotId !== null) {
-                            reproducedPlantsRef.current.add(currentPlantId); // Mark used
-
-                            const newGarden = [...currentGarden];
-                            newGarden[emptySpotId].plant = createPlant(
-                                'Girassol',
-                                [currentPlantId],
-                                true, // Inbreeding (Small)
-                                false
-                            );
-                            return newGarden;
-                        }
+            setTimeout(() => {
+                if (didSelfPollinate) {
+                    addNotification("Auto-polinização (Abóbora)", "Sem abelhas ou parceiros por perto, a planta se auto-fecundou. Isso aumenta a chance de depressão endogâmica.");
                 }
-                return currentGarden;
-            });
-
-            if (beeState !== 'visible') {
-                addNotification("Auto-polinização (Girassol) 🌻", "Sem abelhas para levar o pólen longe, o girassol se auto-polinizou. Isso gera sementes menores.");
-            }
+            }, 0);
         }, 30000);
-
+    } else if (plantType === 'Girassol') {
+        const currentPlantId = grownPlot.plant.instanceId;
+        setTimeout(() => {
+            let didSelfPollinate = false;
+            setGarden(currentGarden => {
+                if (beeState === 'visible') {
+                    return currentGarden;
+                }
+                const parentPlot = currentGarden.find(p => p.id === lastGrownId);
+                if (!parentPlot || !parentPlot.plant || parentPlot.plant.instanceId !== currentPlantId || reproducedPlantsRef.current.has(currentPlantId)) {
+                    return currentGarden;
+                }
+                const hasPartner = currentGarden.some(p => p.plant?.type === 'Girassol' && p.plant.stage === 'grown' && p.plant.instanceId !== currentPlantId);
+                if (hasPartner) {
+                    return currentGarden;
+                }
+                const emptySpotId = findEmptySpot(lastGrownId, currentGarden);
+                if (emptySpotId !== null) {
+                    reproducedPlantsRef.current.add(currentPlantId);
+                    didSelfPollinate = true;
+                    const newGarden = [...currentGarden];
+                    newGarden[emptySpotId].plant = createPlant('Girassol', [currentPlantId], true, false);
+                    return newGarden;
+                }
+                return currentGarden;
+            });
+            setTimeout(() => {
+                if (didSelfPollinate) {
+                    addNotification("Auto-polinização (Girassol) 🌻", "Sem abelhas ou outros girassóis por perto, a planta se auto-polinizou. Isso gera sementes menores.");
+                }
+            }, 0);
+        }, 30000);
     } else if (plantType === 'Maçã') {
         // APPLE LOGIC
         if (beeState === 'visible') {
