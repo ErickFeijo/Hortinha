@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 
@@ -27,6 +28,15 @@ const SEED_TOOLTIPS: Record<PlantType, string> = {
   Girassol: "Atrai abelhas! Poliniza com elas ou se autofecunda lentamente.",
   Maçã: "Exige abelhas e outra macieira para gerar sementes.",
   Feijão: "Se autofecunda após 30s, gerando uma planta de tamanho normal.",
+};
+
+// New mapping for tool emojis for the selected tool indicator
+const TOOL_EMOJIS: Record<ToolType, string> = {
+  regador: '🚿',
+  adubo_organico: '💩',
+  agrotoxico: '☠️',
+  colher: '🧺',
+  polinizacao_manual: '🖌️',
 };
 
 type PlantStage = 'sprout' | 'grown';
@@ -139,6 +149,19 @@ const App = () => {
   const cornCount = cornPlots.length;
   // Check if there is exactly 1 corn and it is fully grown
   const isSingleGrownCorn = cornCount === 1 && cornPlots[0].plant?.stage === 'grown';
+
+  // --- MOBILE UI STATES ---
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 900);
+  const [activeMobilePanel, setActiveMobilePanel] = useState<'tools' | 'seeds' | 'inventory' | null>(null);
+
+  // Detect mobile viewport size
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth <= 900);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Helper to add notifications - Agora aceita um callback onDismiss
   const addNotification = useCallback((title: string, message: string, onDismiss?: () => void) => {
@@ -877,6 +900,12 @@ const App = () => {
   }, [lastGrownId, garden, beeState, determineOffspringGenetics, addNotification, weather, checkCornPollination]);
   
   const handlePlotClick = useCallback((plotId: number) => {
+    // Close mobile panels if open
+    if (isMobile && activeMobilePanel !== null) {
+      setActiveMobilePanel(null);
+      return; // Do not process plot click if a panel was open
+    }
+
     const plot = garden.find(p => p.id === plotId);
     if (!plot) return;
 
@@ -1054,7 +1083,7 @@ const App = () => {
             return currentGarden;
         });
     }
-  }, [selectedTool, growPlant, weather, pollenSack, garden, determineOffspringGenetics, addNotification]);
+  }, [selectedTool, growPlant, weather, pollenSack, garden, determineOffspringGenetics, addNotification, isMobile, activeMobilePanel]);
 
   // Helper to get coordinates for SVG line
   const getCoordinates = (index: number) => {
@@ -1073,8 +1102,16 @@ const App = () => {
     }
   }
 
+  // Handle tool/seed selection and close mobile panel if active
+  const handleSelectTool = useCallback((tool: PlantType | ToolType | null) => {
+    setSelectedTool(tool);
+    if (isMobile) {
+      setActiveMobilePanel(null); // Close the panel on selection
+    }
+  }, [isMobile]);
+
   return (
-    <div className={`app-container ${weather.includes('raining') ? 'is-raining' : ''}`}>
+    <div className={`app-container ${weather.includes('raining') ? 'is-raining' : ''} ${isMobile ? 'is-mobile' : ''}`}>
       {/* Wind Overlay */}
       {isWindy && (
           <div className={`wind-overlay ${isPollinating ? 'is-pollinating' : ''}`}>
@@ -1140,27 +1177,41 @@ const App = () => {
       </div>
 
       {/* WEATHER FORECAST UI */}
-      <div className="weather-forecast">
-          <div className="forecast-now">
-              <span>Agora:</span>
-              <span className="weather-icon">{getWeatherIcon(weather)}</span>
-          </div>
-          <div className="forecast-future">
-              {forecast.map((fc, index) => (
-                  <div key={index} className="forecast-item">
-                      <span className="weather-icon">{getWeatherIcon(fc)}</span>
-                  </div>
-              ))}
-          </div>
-          <button 
-            className="advance-weather-button" 
-            onClick={advanceWeather}
-            data-tooltip="Avançar tempo"
-            aria-label="Avançar previsão do tempo"
-          >
-            ⏭️
-          </button>
-      </div>
+      {/* Desktop Version */}
+      {!isMobile && (
+        <div className="weather-forecast">
+            <div className="forecast-now">
+                <span>Agora:</span>
+                <span className="weather-icon">{getWeatherIcon(weather)}</span>
+            </div>
+            <div className="forecast-future">
+                {forecast.map((fc, index) => (
+                    <div key={index} className="forecast-item">
+                        <span className="weather-icon">{getWeatherIcon(fc)}</span>
+                    </div>
+                ))}
+            </div>
+            <button 
+              className="advance-weather-button" 
+              onClick={advanceWeather}
+              data-tooltip="Avançar tempo"
+              aria-label="Avançar previsão do tempo"
+            >
+              ⏭️
+            </button>
+        </div>
+      )}
+
+      {/* Mobile Version (new button) */}
+      {isMobile && (
+        <button
+          className="mobile-weather-button"
+          onClick={advanceWeather}
+          aria-label={`Tempo atual: ${weather}. Clique para avançar.`}
+        >
+          <span className="weather-icon">{getWeatherIcon(weather)}</span>
+        </button>
+      )}
 
       <header className="header">
         <h1>Fazenda Genética</h1>
@@ -1239,10 +1290,10 @@ const App = () => {
         </div>
       </main>
 
-       <div className="floating-panel tools-panel">
+       <div className={`floating-panel tools-panel ${isMobile && activeMobilePanel === 'tools' ? 'mobile-panel-active' : ''}`}>
         <button
             className={`tool-button ${selectedTool === 'regador' ? 'selected' : ''}`}
-            onClick={() => setSelectedTool(selectedTool === 'regador' ? null : 'regador')}
+            onClick={() => handleSelectTool(selectedTool === 'regador' ? null : 'regador')}
             aria-pressed={selectedTool === 'regador'}
             data-tooltip="Rega os brotos para fazê-los crescer."
         >
@@ -1251,7 +1302,7 @@ const App = () => {
         </button>
         <button
             className={`tool-button ${selectedTool === 'adubo_organico' ? 'selected' : ''}`}
-            onClick={() => setSelectedTool(selectedTool === 'adubo_organico' ? null : 'adubo_organico')}
+            onClick={() => handleSelectTool(selectedTool === 'adubo_organico' ? null : 'adubo_organico')}
             aria-pressed={selectedTool === 'adubo_organico'}
             data-tooltip="Fertiliza a planta para uma colheita grande."
         >
@@ -1260,7 +1311,7 @@ const App = () => {
         </button>
         <button
             className={`tool-button ${selectedTool === 'agrotoxico' ? 'selected' : ''}`}
-            onClick={() => setSelectedTool(selectedTool === 'agrotoxico' ? null : 'agrotoxico')}
+            onClick={() => handleSelectTool(selectedTool === 'agrotoxico' ? null : 'agrotoxico')}
             aria-pressed={selectedTool === 'agrotoxico'}
             data-tooltip="Garante uma colheita grande."
         >
@@ -1278,7 +1329,7 @@ const App = () => {
         </button>
          <button
             className={`tool-button ${selectedTool === 'polinizacao_manual' ? 'selected' : ''}`}
-            onClick={() => setSelectedTool(selectedTool === 'polinizacao_manual' ? null : 'polinizacao_manual')}
+            onClick={() => handleSelectTool(selectedTool === 'polinizacao_manual' ? null : 'polinizacao_manual')}
             aria-pressed={selectedTool === 'polinizacao_manual'}
             data-tooltip="Colete pólen de uma planta para polinizar outra manualmente."
         >
@@ -1287,7 +1338,7 @@ const App = () => {
         </button>
          <button
             className={`tool-button ${selectedTool === 'colher' ? 'selected' : ''}`}
-            onClick={() => setSelectedTool(selectedTool === 'colher' ? null : 'colher')}
+            onClick={() => handleSelectTool(selectedTool === 'colher' ? null : 'colher')}
             aria-pressed={selectedTool === 'colher'}
             data-tooltip="Coleta plantas adultas para o seu inventário."
         >
@@ -1296,14 +1347,14 @@ const App = () => {
         </button>
       </div>
 
-      <div className="floating-panel seed-panel">
+      <div className={`floating-panel seed-panel ${isMobile && activeMobilePanel === 'seeds' ? 'mobile-panel-active' : ''}`}>
         <h2>Sementes</h2>
         <div className="seed-selection-grid">
           {(Object.keys(PLANT_CONFIG) as PlantType[]).map(type => (
             <button
               key={type}
               className={`seed-button ${selectedTool === type ? 'selected' : ''}`}
-              onClick={() => setSelectedTool(selectedTool === type ? null : type)}
+              onClick={() => handleSelectTool(selectedTool === type ? null : type)}
               aria-pressed={selectedTool === type}
               data-tooltip={SEED_TOOLTIPS[type]}
             >
@@ -1314,7 +1365,7 @@ const App = () => {
         </div>
       </div>
 
-      <div className="floating-panel inventory-panel">
+      <div className={`floating-panel inventory-panel ${isMobile && activeMobilePanel === 'inventory' ? 'mobile-panel-active' : ''}`}>
         <h2>Inventário</h2>
         {Object.keys(inventory).length > 0 ? (
           <div className="inventory-list">
@@ -1391,16 +1442,27 @@ const App = () => {
             <div className="modal-content" onClick={(e) => e.stopPropagation()}>
                 <button className="close-button" onClick={() => setInstructionsOpen(false)} aria-label="Fechar instruções">&times;</button>
                 <h2>Jogo da Colheita</h2>
-                <ol className="instructions-list">
-                    <li><strong>Selecione uma semente ou ferramenta:</strong> Escolha o que usar nos painéis.</li>
-                    <li><strong>Plante:</strong> Com uma semente selecionada, clique em um lote de terra vazio.</li>
-                    <li><strong>Cuide da planta:</strong> Um broto (🌱) precisa de <strong>água</strong> para crescer. Use o regador (💧).</li>
-                    <li><strong>Cresça mais:</strong> Use <strong>Adubo Orgânico</strong> ou <strong>Agrotóxicos</strong> para fazer a planta ficar gigante!</li>
-                    <li><strong>Atenção:</strong> Agrotóxicos funcionam bem, mas espantam as abelhas! 🐝🚫</li>
-                    <li><strong>Combine:</strong> Plantas vizinhas iguais criam novos brotos!</li>
-                    <li><strong>Abóboras, Maçãs e Milhos:</strong> Têm regras especiais de genética e polinização. Descubra todas as variantes!</li>
-                    <li><strong>Colha:</strong> Use a pá para colher.</li>
-                </ol>
+                {isMobile ? (
+                    <ol className="instructions-list">
+                        <li><strong>1. Selecione Semente/Ferramenta.</strong></li>
+                        <li><strong>2. Plante:</strong> Clique em um lote vazio.</li>
+                        <li><strong>3. Regue (🌱):</strong> Botoes precisam de água para crescer.</li>
+                        <li><strong>4. Fertilize:</strong> Adubo orgânico/agrotóxico para plantas grandes.</li>
+                        <li><strong>5. ATENÇÃO:</strong> Agrotóxicos espantam abelhas! 🐝🚫</li>
+                        <li><strong>6. Colha:</strong> Use a cesta para coletar.</li>
+                    </ol>
+                ) : (
+                    <ol className="instructions-list">
+                        <li><strong>Selecione uma semente ou ferramenta:</strong> Escolha o que usar nos painéis.</li>
+                        <li><strong>Plante:</strong> Com uma semente selecionada, clique em um lote de terra vazio.</li>
+                        <li><strong>Cuide da planta:</strong> Um broto (🌱) precisa de <strong>água</strong> para crescer. Use o regador (💧).</li>
+                        <li><strong>Cresça mais:</strong> Use <strong>Adubo Orgânico</strong> ou <strong>Agrotóxicos</strong> para fazer a planta ficar gigante!</li>
+                        <li><strong>Atenção:</strong> Agrotóxicos funcionam bem, mas espantam as abelhas! 🐝🚫</li>
+                        <li><strong>Combine:</strong> Plantas vizinhas iguais criam novos brotos!</li>
+                        <li><strong>Abóboras, Maçãs e Milhos:</strong> Têm regras especiais de genética e polinização. Descubra todas as variantes!</li>
+                        <li><strong>Colha:</strong> Use a pá para colher.</li>
+                    </ol>
+                )}
             </div>
         </div>
       )}
@@ -1414,6 +1476,59 @@ const App = () => {
                 <button className="ok-button" onClick={closeTopModal}>Entendi</button>
             </div>
         </div>
+      )}
+
+      {/* Indicator for selected tool/seed */}
+      {selectedTool && (
+        <button
+          className="selected-tool-indicator"
+          onClick={() => setSelectedTool(null)}
+          aria-label={`Ferramenta selecionada: ${Object.keys(PLANT_CONFIG).includes(selectedTool as PlantType) ? selectedTool : `o ${selectedTool}`}. Clique para deselecionar.`}
+        >
+          <span className="emoji">
+            {Object.keys(PLANT_CONFIG).includes(selectedTool as PlantType)
+              ? PLANT_CONFIG[selectedTool as PlantType].phenotype
+              : TOOL_EMOJIS[selectedTool as ToolType]}
+          </span>
+        </button>
+      )}
+
+      {/* Mobile Navigation Bar */}
+      {isMobile && (
+        <>
+            {activeMobilePanel !== null && (
+                <div className="mobile-backdrop-overlay" onClick={() => setActiveMobilePanel(null)}></div>
+            )}
+            <nav className="mobile-nav-bar">
+                <button 
+                    className={`mobile-nav-button ${activeMobilePanel === 'tools' ? 'selected' : ''}`}
+                    onClick={() => setActiveMobilePanel(activeMobilePanel === 'tools' ? null : 'tools')}
+                    aria-expanded={activeMobilePanel === 'tools'}
+                    aria-label="Abrir ferramentas"
+                >
+                    <span className="emoji">🛠️</span>
+                    Ferramentas
+                </button>
+                <button 
+                    className={`mobile-nav-button ${activeMobilePanel === 'seeds' ? 'selected' : ''}`}
+                    onClick={() => setActiveMobilePanel(activeMobilePanel === 'seeds' ? null : 'seeds')}
+                    aria-expanded={activeMobilePanel === 'seeds'}
+                    aria-label="Abrir sementes"
+                >
+                    <span className="emoji">🌱</span>
+                    Sementes
+                </button>
+                <button 
+                    className={`mobile-nav-button ${activeMobilePanel === 'inventory' ? 'selected' : ''}`}
+                    onClick={() => setActiveMobilePanel(activeMobilePanel === 'inventory' ? null : 'inventory')}
+                    aria-expanded={activeMobilePanel === 'inventory'}
+                    aria-label="Abrir inventário"
+                >
+                    <span className="emoji">🧺</span>
+                    Inventário
+                </button>
+            </nav>
+        </>
       )}
 
     </div>

@@ -1,3 +1,4 @@
+
 :root {
   --sky-top: #87CEEB;
   --sky-bottom: #a3def5;
@@ -19,6 +20,7 @@
   --font-family: 'Poppins', sans-serif;
   --shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   --panel-padding: 1.25rem;
+  --mobile-nav-height: 5.5rem; /* Height for mobile bottom nav bar */
 }
 
 * {
@@ -211,12 +213,12 @@ body {
   to { transform: scale(1); opacity: 1; }
 }
 
-/* Weather Forecast moved to top-left */
+/* Weather Forecast */
 .weather-forecast {
   position: absolute;
   top: 1.5rem;
   left: 1.5rem;
-  width: auto; /* Changed */
+  width: auto;
   z-index: 50;
   background-color: rgba(210, 180, 140, 0.85); /* Semi-transparent */
   backdrop-filter: blur(4px);
@@ -226,13 +228,13 @@ body {
   padding: 0.5rem 1rem;
   box-shadow: var(--shadow);
   display: flex;
-  flex-direction: row; /* Flattened layout */
+  flex-direction: row;
   align-items: center;
   justify-content: space-around;
   gap: 1rem;
 }
 .weather-forecast h3 {
-  display: none; /* Removed for flatter look */
+  display: none;
 }
 .forecast-now {
   display: flex;
@@ -1165,93 +1167,267 @@ body {
     animation: nitrogen-boost 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
+/* Selected Tool Indicator */
+.selected-tool-indicator {
+  position: fixed;
+  bottom: 1.5rem; /* Desktop position adjusted to bottom */
+  right: 1.5rem; /* Desktop position */
+  width: 55px;
+  height: 55px;
+  border-radius: 50%;
+  background-color: var(--primary-green);
+  border: 4px solid var(--dark-green);
+  box-shadow: var(--shadow);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  transition: transform 0.2s ease, background-color 0.2s ease;
+  z-index: 55; /* Higher than other fixed elements */
+  transform: none; /* Reset potential mobile transform */
+}
+
+.selected-tool-indicator:hover {
+  transform: scale(1.1);
+  background-color: var(--dark-green);
+}
+
+.selected-tool-indicator .emoji {
+  font-size: 2rem;
+  line-height: 1;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.2));
+}
+
+
+/* Mobile Weather Button */
+.mobile-weather-button {
+  position: fixed;
+  top: 1.5rem; /* Position on top-right for mobile */
+  right: 1.5rem; /* Position on top-right for mobile */
+  width: 48px; /* Same size as notification bell */
+  height: 48px;
+  border-radius: 50%;
+  background-color: var(--wood-panel);
+  border: 4px solid var(--wood-border);
+  color: var(--text-color);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+  transition: transform 0.2s;
+  z-index: 50; /* Ensure it's above other elements */
+}
+
+.mobile-weather-button:hover {
+  transform: scale(1.1);
+}
+
+.mobile-weather-button .weather-icon {
+  font-size: 1.8rem;
+  line-height: 1;
+}
+
 
 /* Responsive Design */
 @media (max-width: 900px) {
   body {
-    overflow: auto;
+    overflow: hidden; /* Prevent body scroll when mobile panels are closed, use panel overflow for content */
   }
   .app-container {
     padding: 1rem;
-    padding-bottom: 15rem; /* Space for panels at the bottom */
+    padding-bottom: var(--mobile-nav-height); /* Space for mobile nav bar */
     justify-content: flex-start;
-    height: auto;
-    min-height: 100vh;
+    height: 100vh; /* Keep height fixed for mobile */
+    min-height: auto; /* Override desktop min-height */
   }
+  
   .header {
     position: relative;
     top: auto;
     width: 100%;
-    margin-top: 5rem; /* Space for fixed notifs/weather */
+    margin-top: 1rem;
     margin-bottom: 1rem;
   }
   .header p {
     display: none;
   }
-  .floating-panel {
-    position: relative;
-    top: auto;
-    left: auto;
-    right: auto;
-    bottom: auto;
-    transform: none;
-    width: 100%;
-    margin: 1rem 0;
-    z-index: 1;
-  }
   .garden-container {
-    order: -1; /* Move garden up */
     width: 95vw;
     max-width: 400px; /* Limit size on tablets */
-  }
-  .tools-panel {
-    order: 1;
-    flex-direction: row;
-    overflow-x: auto;
-    padding: 0.5rem;
-  }
-  .tool-button {
-    flex: 0 0 auto;
-    min-width: 120px;
-    justify-content: center;
-  }
-  .seed-panel {
-    order: 2;
-  }
-  .seed-selection-grid {
-    display: flex;
-    overflow-x: auto;
-    padding-bottom: 0.5rem;
-  }
-  .seed-button {
-    flex: 0 0 80px;
-  }
-  .inventory-panel {
-    order: 3;
+    margin-bottom: 1rem; /* Space between garden and nav bar */
   }
 
-  /* Keep notifications and weather fixed on mobile */
+  /* Hide desktop weather forecast on mobile */
   .weather-forecast {
-    position: absolute;
-    top: 1rem;
-    left: 1rem;
-    width: auto;
-    max-width: 180px;
+    display: none;
   }
   
   .notification-wrapper {
-    position: fixed;
-    bottom: 1rem;
+    position: fixed; /* Explicitly fixed for mobile */
+    bottom: calc(1rem + var(--mobile-nav-height)); /* Position above mobile nav */
     left: 1rem;
+    z-index: 105; /* ENSURE it's above backdrop and floating panels */
+  }
+
+  /* Floating Panels (Tools, Seeds, Inventory) - Mobile Behavior */
+  .floating-panel {
+    position: fixed;
+    bottom: -100%; /* Start off-screen */
+    left: 0;
+    right: 0;
+    width: 100%;
+    max-height: 80vh; /* Limit height of the panel */
+    padding: 1rem; /* Adjusted padding for mobile */
+    border-radius: 12px 12px 0 0; /* Rounded top corners, sharp bottom */
+    border-bottom: none; /* No bottom border when appearing from bottom */
+    transition: bottom 0.3s ease-out; /* Smooth slide-up animation */
+    z-index: 101; /* Above mobile nav bar */
+    overflow-y: auto; /* Allow scrolling within the panel if content is too tall */
+    box-sizing: border-box; /* Ensure padding doesn't affect width */
+  }
+
+  .floating-panel.mobile-panel-active {
+    bottom: var(--mobile-nav-height); /* Panels stop above the mobile nav bar */
+  }
+
+  .tools-panel, .seed-panel, .inventory-panel {
+    /* Override desktop specific positioning */
+    top: auto;
+    transform: none;
+  }
+
+  .seed-panel h2 {
+    margin-top: 0;
+    margin-bottom: 0.75rem;
+  }
+
+  .seed-selection-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(60px, 1fr)); /* More flexible grid for seeds */
+    gap: 0.5rem;
+  }
+
+  .seed-button {
+    height: 80px; /* Make seed buttons larger and more tappable */
+    width: auto;
+    font-size: 0.8rem;
+  }
+
+  .seed-button .emoji {
+    font-size: 1.5rem;
+  }
+
+  .tools-panel {
+    flex-direction: row; /* Keep tools in a row */
+    flex-wrap: wrap; /* Allow wrapping */
+    justify-content: center; /* Center buttons */
+    gap: 0.5rem;
+    padding-bottom: 1.5rem; /* More padding at the bottom inside the panel */
+  }
+  .tool-button {
+    flex: 0 0 auto;
+    min-width: 100px; /* Smaller min-width for tools */
+    width: auto;
+    font-size: 0.85rem;
+    padding: 0.6rem;
+    justify-content: center;
+  }
+  .tool-button .tool-emoji {
+    font-size: 1.2rem;
   }
 
   .inventory-panel {
-    display: none; /* Hide for now to simplify mobile */
+    width: 100%; /* Inventory takes full width */
   }
 
+  /* Tooltips hidden on mobile */
   [data-tooltip]::after {
     display: none !important;
   }
+
+  /* Mobile Navigation Bar */
+  .mobile-nav-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: var(--mobile-nav-height);
+    background-color: var(--wood-panel);
+    border-top: 6px solid var(--wood-border);
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    padding: 0.5rem 0;
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.15); /* Shadow for lift effect */
+    z-index: 100; /* Highest z-index */
+  }
+
+  .mobile-nav-button {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 0.5rem 0;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--light-text);
+    background: none;
+    border: none;
+    cursor: pointer;
+    transition: color 0.2s, transform 0.2s;
+  }
+
+  .mobile-nav-button .emoji {
+    font-size: 1.8rem; /* Larger icons for tappability */
+    line-height: 1;
+    margin-bottom: 0.25rem;
+  }
+
+  .mobile-nav-button:hover {
+    color: var(--text-color);
+  }
+
+  .mobile-nav-button.selected {
+    color: var(--primary-green);
+    transform: translateY(-3px); /* Slight lift for selected */
+  }
+
+  /* Backdrop overlay when a mobile panel is open */
+  .mobile-backdrop-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.4);
+    z-index: 100; /* Above regular content, below active panels */
+    pointer-events: auto; /* Allows clicking to close */
+  }
+    .selected-tool-indicator {
+        top: auto; /* Overrides desktop top */
+        right: auto; /* Overrides desktop right */
+        left: 50%; /* Center horizontally */
+        transform: translateX(-50%); /* For centering */
+        bottom: calc(var(--mobile-nav-height) + 2.5rem); /* Adjusted bottom offset for mobile */
+        width: 65px; /* Larger for mobile */
+        height: 65px; /* Larger for mobile */
+        border-width: 4px; /* Maintain border thickness */
+        z-index: 100; /* Adjusted to 100 as requested */
+    }
+    .selected-tool-indicator .emoji {
+        font-size: 2.2rem; /* Larger emoji for mobile */
+    }
+
+    /* Mobile Weather Button - Repositioned and Z-index adjusted */
+    .mobile-weather-button {
+      bottom: calc(1rem + var(--mobile-nav-height)); /* Align with notification bell */
+      right: 1rem; /* On the opposite side */
+      top: auto; /* Override top: 1.5rem */
+      z-index: 105; /* ENSURE it's above backdrop and floating panels */
+    }
+
 }
 
 @media (max-width: 600px) {
@@ -1260,15 +1436,5 @@ body {
     }
     .garden-plot {
         font-size: 1.8rem;
-    }
-    .weather-forecast {
-        flex-direction: column;
-        gap: 0.5rem;
-        padding: 0.5rem;
-        align-items: flex-start;
-    }
-    .forecast-future {
-        padding-left: 0;
-        border-left: none;
     }
 }
