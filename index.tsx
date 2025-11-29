@@ -1214,7 +1214,7 @@ const App = () => {
       )}
 
       <header className="header">
-        <h1>Germina</h1>
+        <h1>Hortinha</h1>
         <p>Plante, cuide e colha para ver a genética em ação!</p>
       </header>
       
