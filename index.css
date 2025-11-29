@@ -574,7 +574,7 @@ body {
 }
 
 .plant.plant-small.plant-large {
-  animation-name: fertilizer-pop-small;
+  animation: fertilizer-pop-small;
 }
 
 .plant.plant-hybrid {
@@ -583,7 +583,7 @@ body {
 }
 
 .plant.plant-hybrid.plant-large {
-  animation-name: fertilizer-pop-hybrid;
+  animation: fertilizer-pop-hybrid;
 }
 
 
@@ -1421,7 +1421,7 @@ body {
         right: auto; /* Overrides desktop right */
         left: 50%; /* Center horizontally */
         transform: translateX(-50%); /* For centering */
-        bottom: calc(var(--mobile-nav-height) + 2.5rem); /* Adjusted bottom offset for mobile */
+        bottom: calc(var(--mobile-nav-height) + 2rem); /* Adjusted bottom offset for mobile */
         width: 65px; /* Larger for mobile */
         height: 65px; /* Larger for mobile */
         border-width: 4px; /* Maintain border thickness */
