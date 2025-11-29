@@ -72,9 +72,13 @@ body {
 }
 
 .header h1 {
-  font-size: 2rem;
+  font-size: 1.8rem; /* Diminuído para 1.8rem */
   color: var(--text-color);
   font-weight: 600;
+  white-space: nowrap; /* Impede a quebra de linha */
+  overflow: hidden; /* Oculta o conteúdo que excede a largura */
+  text-overflow: ellipsis; /* Adiciona reticências (...) para o texto oculto */
+  max-width: 100%; /* Garante que não transborde o pai */
 }
 
 .header p {
@@ -1248,6 +1252,12 @@ body {
     width: 100%;
     margin-top: 1rem;
     margin-bottom: 1rem;
+  }
+  .header h1 {
+    font-size: 2rem; /* Restore original size for mobile */
+    white-space: normal; /* Allow wrapping on mobile */
+    overflow: visible;
+    text-overflow: clip;
   }
   .header p {
     display: none;
