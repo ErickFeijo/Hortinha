@@ -62,17 +62,17 @@ body {
 .header {
   background-color: var(--wood-panel);
   border: 6px solid var(--wood-border);
-  padding: 1rem 2.5rem;
+  padding: 0.5rem 1rem; /* Reduzido o padding para economizar espaço */
   border-radius: 12px;
   text-align: center;
   position: absolute;
-  top: 2rem;
+  top: 0.75rem; /* Reduzido o espaçamento do topo */
   z-index: 10;
   box-shadow: var(--shadow);
 }
 
 .header h1 {
-  font-size: 1.8rem; /* Diminuído para 1.8rem */
+  font-size: 1.4rem; /* Diminuído para se ajustar à nova caixa */
   color: var(--text-color);
   font-weight: 600;
   white-space: nowrap; /* Impede a quebra de linha */
@@ -82,7 +82,7 @@ body {
 }
 
 .header p {
-  font-size: 1rem;
+  font-size: 0.8rem; /* Diminuído para se ajustar à nova caixa */
   color: var(--light-text);
   margin-top: 0.25rem;
 }
@@ -1250,11 +1250,12 @@ body {
     position: relative;
     top: auto;
     width: 100%;
-    margin-top: 1rem;
+    margin-top: 0.5rem; /* Reduzido o espaçamento superior para mobile */
     margin-bottom: 1rem;
+    padding: 0.5rem 1rem; /* Reduzido o padding para mobile */
   }
   .header h1 {
-    font-size: 2rem; /* Restore original size for mobile */
+    font-size: 1.6rem; /* Ajustado para mobile */
     white-space: normal; /* Allow wrapping on mobile */
     overflow: visible;
     text-overflow: clip;
