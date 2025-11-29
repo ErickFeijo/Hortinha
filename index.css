@@ -1421,7 +1421,7 @@ body {
         right: auto; /* Overrides desktop right */
         left: 50%; /* Center horizontally */
         transform: translateX(-50%); /* For centering */
-        bottom: calc(var(--mobile-nav-height) + 4rem); /* Adjusted bottom offset for mobile */
+        bottom: calc(var(--mobile-nav-height) + 1.5rem); /* Adjusted bottom offset for mobile */
         width: 65px; /* Larger for mobile */
         height: 65px; /* Larger for mobile */
         border-width: 4px; /* Maintain border thickness */
