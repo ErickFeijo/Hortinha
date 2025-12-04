@@ -27,7 +27,7 @@ const SEED_TOOLTIPS: Record<PlantType, string> = {
   Milho: "Usa o vento para cruzar. Precisa de um parceiro para se reproduzir.",
   Girassol: "Atrai abelhas! Poliniza com elas ou se autofecunda lentamente.",
   Maçã: "Exige abelhas e outra macieira para gerar sementes.",
-  Feijão: "Se autofecunda após 30s, gerando uma planta de tamanho normal.",
+  Feijão: "Se autofecunda após 15s, gerando uma planta de tamanho normal.",
 };
 
 // New mapping for tool emojis for the selected tool indicator
@@ -58,6 +58,7 @@ interface PlotState {
   isWatered: boolean;
   hasOrganicFertilizer: boolean; // New: Can have organic fertilizer
   hasChemicalFertilizer: boolean; // New: Can have chemical fertilizer
+  hasGreenManureFromBean: boolean; // NEW: Indicates green manure effect from beans
 }
 
 interface Connection {
@@ -82,6 +83,15 @@ interface PollenSack {
   sourcePlotId: number;
 }
 
+interface ActiveBacterium {
+    id: string; // Unique ID for this animation instance
+    plotId: number; // The plot it's targeting
+    startX: number; // For animation positioning
+    startY: number; // For animation positioning
+    targetX: number; // For animation positioning
+    targetY: number; // For animation positioning
+}
+
 // Helper to generate a random starting forecast
 const generateInitialForecast = (): WeatherType[] => {
     const weathers: WeatherType[] = ['sunny', 'sunny', 'raining', 'sunny_windy', 'raining_windy'];
@@ -100,14 +110,14 @@ const CONNECTION_STYLES: Record<Connection['type'], { color: string; marker: str
 const App = () => {
   const [selectedTool, setSelectedTool] = useState<PlantType | ToolType | null>(null);
   const [garden, setGarden] = useState<PlotState[]>(
-    Array.from({ length: 16 }, (_, i) => ({ id: i, plant: null, isWatered: false, hasOrganicFertilizer: false, hasChemicalFertilizer: false }))
+    Array.from({ length: 16 }, (_, i) => ({ id: i, plant: null, isWatered: false, hasOrganicFertilizer: false, hasChemicalFertilizer: false, hasGreenManureFromBean: false }))
   );
   const [inventory, setInventory] = useState<InventoryState>({});
   const [isInstructionsOpen, setInstructionsOpen] = useState(true);
   const [animatingPlots, setAnimatingPlots] = useState<number[]>([]);
   const [fertilizingPlots, setFertilizingPlots] = useState<number[]>([]);
   
-  // State to track the most recently grown plant to trigger reproduction logic
+  // State to track the most recently grown plant to trigger reproduction logic for non-beans
   const [lastGrownId, setLastGrownId] = useState<number | null>(null);
 
   // --- NOTIFICATION SYSTEM ---
@@ -123,9 +133,9 @@ const App = () => {
   const [pollenSack, setPollenSack] = useState<PollenSack | null>(null);
   
   // --- BEAN BACTERIUM ANIMATION ---
-  const [bacteriumAnimation, setBacteriumAnimation] = useState<{ active: boolean; targetPlotId: number | null }>({ active: false, targetPlotId: null });
-  const bacteriumRef = useRef<HTMLDivElement>(null);
-
+  const [activeBacteriumAnimations, setActiveBacteriumAnimations] = useState<ActiveBacterium[]>([]);
+  const newlyGrownBeansQueue = useRef(new Set<number>()); // Use a Set for unique plot IDs
+  const [beanProcessingTrigger, setBeanProcessingTrigger] = useState(0); // Trigger to process beans
 
   // Animation state
   const [beeState, setBeeState] = useState<BeeState>('hidden');
@@ -205,34 +215,45 @@ const App = () => {
 
   const unreadCount = notifications.filter(n => n.isNew).length;
 
-  const growPlant = useCallback((plotId: number) => {
-    // Prevent multiple simultaneous growth calls for the same plot
-    if (growingSproutsRef.current.has(plotId)) return;
-    growingSproutsRef.current.add(plotId);
+  const findEmptySpot = useCallback((centerId: number, currentGarden: PlotState[]): number | null => {
+    const size = 4;
+    const row = Math.floor(centerId / size);
+    const col = centerId % size;
 
-    setTimeout(() => {
-        let plantGrew = false;
-        setGarden(currentGarden => {
-            const plot = currentGarden.find(p => p.id === plotId);
-            // Only grow if it's still a sprout
-            if (plot?.plant?.stage === 'sprout') {
-                plantGrew = true;
-                return currentGarden.map(p =>
-                    p.id === plotId ? { ...p, plant: { ...p.plant, stage: 'grown' as const } } : p
-                );
+    // 1. Try neighbors first
+    for (let dr = -1; dr <= 1; dr++) {
+        for (let dc = -1; dc <= 1; dc++) {
+            if (dr === 0 && dc === 0) continue;
+            const newRow = row + dr;
+            const newCol = col + dc;
+             if (newRow >= 0 && newRow < size && newCol >= 0 && newCol < size) {
+                const neighborId = newRow * size + newCol;
+                if (!currentGarden[neighborId].plant) {
+                    return neighborId;
+                }
             }
-            return currentGarden; // No change needed
-        });
-
-        if (plantGrew) {
-            setLastGrownId(plotId);
         }
-        // Clean up ref after operation
-        growingSproutsRef.current.delete(plotId);
-    }, 2000);
-  }, [setLastGrownId]);
+    }
 
-  // FIX: Moved determineOffspringGenetics function before its usage in useEffects to prevent declaration errors.
+    // 2. If no neighbors, find any empty spot
+    const anyEmpty = currentGarden.find(p => !p.plant);
+    return anyEmpty ? anyEmpty.id : null;
+  }, []);
+
+  const createPlant = (type: PlantType, parentIds: string[] = [], isSmall: boolean = false, isHybrid: boolean = false): PlantState => {
+    const phenotype = PLANT_CONFIG[type].phenotype;
+    return { 
+        instanceId: Math.random().toString(36).substring(2, 9),
+        type, 
+        stage: 'sprout', 
+        phenotype, 
+        parentIds,
+        isSmall,
+        isHybrid,
+        isBoosted: false
+    };
+  };
+
   // Logic for determining offspring genetics (Size rules)
   const determineOffspringGenetics = useCallback((plantA: PlantState, plantB: PlantState) => {
       let isInbreeding = false;
@@ -254,6 +275,192 @@ const App = () => {
       
       return { isInbreeding, isHybrid };
   }, []);
+
+  // New function to handle the entire bean growth and reproduction sequence
+  const processBeanGrowth = useCallback((plotId: number, plantInstanceId: string) => {
+    const bacteriumAnimationId = Math.random().toString(36).substring(2, 9);
+    
+    // Set initial bacterium animation, actual positioning done in useEffect
+    setActiveBacteriumAnimations(prev => [...prev, { id: bacteriumAnimationId, plotId, startX: 0, startY: 0, targetX: 0, targetY: 0 }]);
+    setAnimatingPlots(prev => [...prev, plotId]); // Add plot to animating
+
+    setTimeout(() => {
+        // Remove bacterium animation
+        setActiveBacteriumAnimations(prev => prev.filter(anim => anim.id !== bacteriumAnimationId));
+        setAnimatingPlots(prev => prev.filter(pId => pId !== plotId)); // Remove plot from animating
+
+        setGarden(currentGarden => {
+            const targetPlot = currentGarden.find(p => p.id === plotId);
+            if (targetPlot?.plant?.instanceId === plantInstanceId) {
+                return currentGarden.map(p =>
+                    p.id === plotId
+                        ? { ...p, plant: { ...p.plant!, isBoosted: true } }
+                        : p
+                );
+            }
+            return currentGarden;
+        });
+        addNotification(
+            "Fixação de Nitrogênio 🦠",
+            "As raízes do feijão soltam substâncias químicas no solo que atraem bactérias do gênero Rhizobium. A bactéria possui uma enzima chamada nitrogenase, que faz a mágica: Transforma N₂ do ar → em NH₃ (amônia)"
+        );
+
+        // --- SELF-POLLINATION (after fixation) ---
+        setTimeout(() => {
+            setGarden(currentGarden => { // Using a fresh state for verification
+                const plantStillThere = currentGarden[plotId]?.plant?.instanceId === plantInstanceId;
+                
+                if (plantStillThere) {
+                    setAnimatingPlots(prev => [...prev, plotId]); // Start animation for self-pollination effect
+                    
+                    setTimeout(() => {
+                        setAnimatingPlots(prev => prev.filter(pId => pId !== plotId));
+                        let plantAdded = false;
+                        setGarden(innerGarden => { // Use innerGarden to avoid stale closure
+                            const parentPlot = innerGarden[plotId];
+                            if (!parentPlot?.plant || parentPlot.plant.instanceId !== plantInstanceId) {
+                                return innerGarden;
+                            }
+
+                            const emptySpotId = findEmptySpot(plotId, innerGarden);
+                            
+                            if (emptySpotId !== null) {
+                                const newGarden = [...innerGarden];
+                                newGarden[emptySpotId].plant = createPlant(
+                                    'Feijão',
+                                    [plantInstanceId],
+                                    false,
+                                    false
+                                );
+                                plantAdded = true;
+                                return newGarden;
+                            }
+                            return innerGarden;
+                        });
+                        
+                        if (plantAdded) {
+                            addNotification("Auto-fecundação (Feijão) 🫘", "O feijão é uma planta autógama. Ele se reproduz sozinho mantendo seu tamanho normal, sem perda de vigor!");
+                        }
+                    }, 1500); // Duration for self-pollination visual effect
+                }
+                return currentGarden; // Ensure previous garden state is passed through if no changes
+            });
+        }, 15000); // 15 seconds for self-pollination after nitrogen fixation
+
+    }, 6000); // Animation duration for bacterium
+  }, [addNotification, findEmptySpot]); // Dependencies for processBeanGrowth
+
+  const growPlant = useCallback((plotId: number) => {
+    if (growingSproutsRef.current.has(plotId)) return;
+    growingSproutsRef.current.add(plotId);
+
+    setTimeout(() => {
+        let plantGrew = false;
+        let plantType: PlantType | null = null;
+        setGarden(currentGarden => {
+            const plot = currentGarden.find(p => p.id === plotId);
+            if (plot?.plant?.stage === 'sprout') {
+                plantGrew = true;
+                plantType = plot.plant.type; // Capture type here
+                return currentGarden.map(p =>
+                    p.id === plotId ? { ...p, plant: { ...p.plant, stage: 'grown' as const } } : p
+                );
+            }
+            return currentGarden;
+        });
+
+        if (plantGrew) {
+            if (plantType === 'Feijão') {
+                newlyGrownBeansQueue.current.add(plotId);
+                setBeanProcessingTrigger(prev => prev + 1); // Trigger the processing effect for beans
+            } else {
+                setLastGrownId(plotId); // Only for non-bean plants
+            }
+        }
+        growingSproutsRef.current.delete(plotId);
+    }, 2000);
+  }, [setLastGrownId]); // setLastGrownId is a stable state setter, no need in dependency array
+
+  // Effect to process the queue of newly grown beans
+  useEffect(() => {
+    if (newlyGrownBeansQueue.current.size === 0) return;
+
+    // Get the first plotId from the queue
+    const plotId = newlyGrownBeansQueue.current.values().next().value;
+    if (plotId === undefined) return; // Should not happen with size check
+
+    const grownPlot = garden[plotId];
+    if (!grownPlot || !grownPlot.plant || grownPlot.plant.stage !== 'grown') {
+        newlyGrownBeansQueue.current.delete(plotId); // Remove invalid entry
+        setBeanProcessingTrigger(prev => prev + 1); // Re-trigger to check next item
+        return;
+    }
+    
+    // Call the dedicated processing function for this bean
+    processBeanGrowth(plotId, grownPlot.plant.instanceId);
+
+    // Remove it from the queue immediately after initiating its process
+    newlyGrownBeansQueue.current.delete(plotId);
+
+    // Use a small delay and re-trigger if there are more beans in the queue
+    const timer = setTimeout(() => {
+      if (newlyGrownBeansQueue.current.size > 0) {
+        setBeanProcessingTrigger(prev => prev + 1); // Process next bean if available
+      }
+    }, 100); // Small delay to allow React to update
+    return () => clearTimeout(timer);
+
+  }, [beanProcessingTrigger, garden, processBeanGrowth]); // Dependencies for this effect
+
+
+  // Effect to position the bacterium animations
+  useEffect(() => {
+    setActiveBacteriumAnimations(prevActiveAnimations => {
+        let updatedAnimations = false;
+        const newAnimations = prevActiveAnimations.map(bacterium => {
+            // Only position if start/target are not yet set (or a better flag)
+            // And if it targets a valid plot
+            if (bacterium.startX === 0 && bacterium.startY === 0) {
+                const plotElement = document.querySelector(`.garden-plot[aria-label^="Lote de terra ${bacterium.plotId + 1}"]`);
+                const appContainer = document.querySelector('.app-container');
+                
+                if (plotElement && appContainer) {
+                    const plotRect = plotElement.getBoundingClientRect();
+                    const appRect = appContainer.getBoundingClientRect();
+
+                    const targetX = (plotRect.left - appRect.left) + (plotRect.width / 2);
+                    const targetY = (plotRect.top - appRect.top) + (plotRect.height / 2);
+
+                    const startSide = Math.floor(Math.random() * 4);
+                    let startX, startY;
+
+                    switch(startSide) {
+                        case 0: // Top
+                            startX = Math.random() * appRect.width;
+                            startY = -50;
+                            break;
+                        case 1: // Right
+                            startX = appRect.width + 50;
+                            startY = Math.random() * appRect.height;
+                            break;
+                        case 2: // Bottom
+                            startX = Math.random() * appRect.width;
+                            startY = appRect.height + 50;
+                            break;
+                        default: // Left
+                            startX = -50;
+                            startY = Math.random() * appRect.height;
+                    }
+                    updatedAnimations = true;
+                    return { ...bacterium, startX, startY, targetX, targetY };
+                }
+            }
+            return bacterium;
+        });
+        return updatedAnimations ? newAnimations : prevActiveAnimations;
+    });
+  }, [activeBacteriumAnimations]); // Only re-run when activeBacteriumAnimations state changes
+
 
     const checkCornPollination = useCallback(() => {
         let pollinationHappened = false;
@@ -350,19 +557,6 @@ const App = () => {
         return [...rest, newRandomWeather];
     });
   }, []);
-
-  // Effect: Periodic Corn Pollination Check during Wind
-  useEffect(() => {
-      const isCurrentlyWindy = weather.includes('_windy');
-
-      if (isCurrentlyWindy) {
-          const pollinationInterval = setInterval(() => {
-              checkCornPollination();
-          }, 5000); // Check every 5 seconds
-
-          return () => clearInterval(pollinationInterval);
-      }
-  }, [weather, checkCornPollination]);
 
   // Combined Weather Effects Logic
   useEffect(() => {
@@ -501,49 +695,6 @@ const App = () => {
     }
   }, [selectedTool]);
 
-  // Effect: Position the bacterium for its animation
-  useEffect(() => {
-    if (bacteriumAnimation.active && bacteriumAnimation.targetPlotId !== null && bacteriumRef.current) {
-        const plotElement = document.querySelector(`.garden-plot[aria-label^="Lote de terra ${bacteriumAnimation.targetPlotId + 1}"]`);
-        const appContainer = document.querySelector('.app-container');
-        const bacteriumElement = bacteriumRef.current;
-
-        if (plotElement && appContainer) {
-            const plotRect = plotElement.getBoundingClientRect();
-            const appRect = appContainer.getBoundingClientRect();
-
-            const targetX = (plotRect.left - appRect.left) + (plotRect.width / 2);
-            const targetY = (plotRect.top - appRect.top) + (plotRect.height / 2);
-
-            const startSide = Math.floor(Math.random() * 4);
-            let startX, startY;
-
-            switch(startSide) {
-                case 0: // Top
-                    startX = Math.random() * appRect.width;
-                    startY = -50;
-                    break;
-                case 1: // Right
-                    startX = appRect.width + 50;
-                    startY = Math.random() * appRect.height;
-                    break;
-                case 2: // Bottom
-                    startX = Math.random() * appRect.width;
-                    startY = appRect.height + 50;
-                    break;
-                default: // Left
-                    startX = -50;
-                    startY = Math.random() * appRect.height;
-            }
-
-            bacteriumElement.style.setProperty('--target-x', `${targetX}px`);
-            bacteriumElement.style.setProperty('--target-y', `${targetY}px`);
-            bacteriumElement.style.setProperty('--start-x', `${startX}px`);
-            bacteriumElement.style.setProperty('--start-y', `${startY}px`);
-        }
-    }
-  }, [bacteriumAnimation]);
-
 
   const findNeighbor = (centerId: number, type: PlantType): number | null => {
         const size = 4;
@@ -566,45 +717,6 @@ const App = () => {
             }
         }
         return null;
-  };
-
-  const findEmptySpot = (centerId: number, currentGarden: PlotState[]): number | null => {
-    const size = 4;
-    const row = Math.floor(centerId / size);
-    const col = centerId % size;
-
-    // 1. Try neighbors first
-    for (let dr = -1; dr <= 1; dr++) {
-        for (let dc = -1; dc <= 1; dc++) {
-            if (dr === 0 && dc === 0) continue;
-            const newRow = row + dr;
-            const newCol = col + dc;
-             if (newRow >= 0 && newRow < size && newCol >= 0 && newCol < size) {
-                const neighborId = newRow * size + newCol;
-                if (!currentGarden[neighborId].plant) {
-                    return neighborId;
-                }
-            }
-        }
-    }
-
-    // 2. If no neighbors, find any empty spot
-    const anyEmpty = currentGarden.find(p => !p.plant);
-    return anyEmpty ? anyEmpty.id : null;
-  };
-
-  const createPlant = (type: PlantType, parentIds: string[] = [], isSmall: boolean = false, isHybrid: boolean = false): PlantState => {
-    const phenotype = PLANT_CONFIG[type].phenotype;
-    return { 
-        instanceId: Math.random().toString(36).substring(2, 9),
-        type, 
-        stage: 'sprout', 
-        phenotype, 
-        parentIds,
-        isSmall,
-        isHybrid,
-        isBoosted: false
-    };
   };
 
   // Reusable function for Pollination logic (Pumpkin, Apple, Sunflower)
@@ -647,6 +759,18 @@ const App = () => {
 
       const partner = partners[0];
       const partnerId = partner.plant!.instanceId;
+
+      // NEW: Check for parent-child incompatibility in Apples (Maçã)
+      if (plantType === 'Maçã') {
+        const isSourceParentOfPartner = partner.plant!.parentIds?.includes(source.plant!.instanceId);
+        const isPartnerParentOfSource = source.plant!.parentIds?.includes(partner.plant!.instanceId);
+        if (isSourceParentOfPartner || isPartnerParentOfSource) {
+            addNotification("Polinização Inválida (Maçã) 🍎", "Autoincompatibilidade gametofítica: A polinização entre plantas parentes é evitada para manter a diversidade genética.");
+            reproducedPlantsRef.current.add(sourceId); // Still mark source as used to avoid immediate re-attempt
+            reproducedPlantsRef.current.add(partnerId); // Mark partner too
+            return false; // Prevent pollination
+        }
+      }
 
       // EXECUTE
       setActiveConnections([{ from: source.id, to: partner.id, type: plantType }]);
@@ -709,7 +833,7 @@ const App = () => {
       }, 2000);
 
       return true;
-  }, [beeState, determineOffspringGenetics, addNotification]);
+  }, [beeState, determineOffspringGenetics, addNotification, findEmptySpot]);
 
 
   // Effect: Check for Bee Pollination loop (Pumpkin, Apple, Sunflower)
@@ -732,7 +856,7 @@ const App = () => {
   }, [beeState, garden, reproductionTrigger, tryPollination]);
 
 
-  // Effect 4: Reproduction Logic (Triggered when a plant finishes growing)
+  // Effect 4: Reproduction Logic for non-bean plants (Triggered when a plant finishes growing)
   useEffect(() => {
     if (lastGrownId === null) return;
 
@@ -814,90 +938,10 @@ const App = () => {
         if (beeState === 'visible') {
             setReproductionTrigger(prev => prev + 1);
         }
-
-    } else if (plantType === 'Feijão') {
-        const currentPlantId = grownPlot.plant.instanceId;
-        const currentPlotId = lastGrownId; // Capture plotId for the inner closures
-
-        // --- BACTERIUM ANIMATION ---
-        setAnimatingPlots([currentPlotId]); 
-        setBacteriumAnimation({ active: true, targetPlotId: currentPlotId });
-
-        setTimeout(() => {
-            setAnimatingPlots([]);
-            setBacteriumAnimation({ active: false, targetPlotId: null });
-
-            setGarden(currentGarden => {
-                const targetPlot = currentGarden.find(p => p.id === currentPlotId);
-                if (targetPlot?.plant?.instanceId === currentPlantId) {
-                    return currentGarden.map(p =>
-                        p.id === currentPlotId
-                            ? { ...p, plant: { ...p.plant!, isBoosted: true } }
-                                                        : p
-                    );
-                }
-                return currentGarden;
-            });
-            addNotification(
-                "Fixação de Nitrogênio 🦠",
-                "As raízes do feijão soltam substâncias químicas no solo que atraem bactérias do gênero Rhizobium. A bactéria possui uma enzima chamada nitrogenase, que faz a mágica: Transforma N₂ do ar → em NH₃ (amônia)"
-            );
-
-            // --- SELF-POLLINATION (after fixation) ---
-            setTimeout(() => { // This is the 30-second timeout for self-pollination
-                // Verify if the plant still exists at the original plot BEFORE proceeding
-                const plantStillThere = garden[currentPlotId]?.plant?.instanceId === currentPlantId;
-                
-                if (plantStillThere) {
-                    setAnimatingPlots([currentPlotId]); // Start animation only if plant is there
-                    
-                    setTimeout(() => {
-                        setAnimatingPlots([]);
-                        let plantAdded = false; // Flag to track if a plant was successfully added
-                        setGarden(currentGarden => {
-                            const parentPlot = currentGarden[currentPlotId];
-                            // Re-verify existence inside setGarden callback for robustness
-                            if (!parentPlot?.plant || parentPlot.plant.instanceId !== currentPlantId) {
-                                return currentGarden;
-                            }
-
-                            const emptySpotId = findEmptySpot(currentPlotId, currentGarden);
-                            
-                            if (emptySpotId !== null) {
-                                const newGarden = [...currentGarden];
-                                newGarden[emptySpotId].plant = createPlant(
-                                    'Feijão',
-                                    [currentPlantId],
-                                    false,
-                                    false
-                                );
-                                plantAdded = true; // Set flag to true if plant is added
-                                return newGarden;
-                            }
-                            return currentGarden;
-                        });
-                        
-                        if (plantAdded) { // Only add notification if a plant was actually added
-                            addNotification("Auto-fecundação (Feijão) 🫘", "O feijão é uma planta autógama. Ele se reproduz sozinho mantendo seu tamanho normal, sem perda de vigor!");
-                        }
-                    }, 1500);
-                } else {
-                    // console.log("Feijão colhido, pulando autofecundação."); // For debugging
-                }
-
-            }, 30000); // 30 seconds for self-pollination
-
-        }, 6000); // Animation duration for bacterium
-    } else {
-        // GENERIC FALLBACK
-        const neighborId = findNeighbor(lastGrownId, plantType);
-        if (neighborId !== null) {
-             // Existing generic neighbor logic...
-        }
     }
 
     setLastGrownId(null); // Reset trigger
-  }, [lastGrownId, garden, beeState, determineOffspringGenetics, addNotification, weather, checkCornPollination]);
+  }, [lastGrownId, garden, beeState, determineOffspringGenetics, addNotification, weather, checkCornPollination, findEmptySpot]);
   
   const handlePlotClick = useCallback((plotId: number) => {
     // Close mobile panels if open
@@ -946,6 +990,18 @@ const App = () => {
             // CASE B: Cross-Pollination
             else if (plot.plant && plot.plant.stage === 'grown' && plot.plant.type === sourcePlant.type) {
                 const targetPlant = plot.plant;
+
+                // NEW: Check for parent-child incompatibility in Apples (Maçã) for manual pollination
+                if (sourcePlant.type === 'Maçã') {
+                    const isSourceParentOfTarget = targetPlant.parentIds?.includes(sourcePlant.instanceId);
+                    const isTargetParentOfSource = sourcePlant.parentIds?.includes(targetPlant.instanceId);
+                    if (isSourceParentOfTarget || isTargetParentOfSource) {
+                        addNotification("Polinização Inválida (Maçã) 🍎", "Autoincompatibilidade gametofítica: A polinização manual entre plantas parentes é evitada.");
+                        setPollenSack(null); // Clear pollen sack even on invalid attempt
+                        return; // Prevent pollination
+                    }
+                }
+
                 const emptySpotId = findEmptySpot(plotId, garden);
 
                 if (emptySpotId !== null) {
@@ -980,7 +1036,7 @@ const App = () => {
         if (harvestedPlant.stage === 'grown') {
             let size: PlantSize = 'normal';
             // Update: Check new boolean fertilizer flags
-            if (harvestedPlant.isHybrid || harvestedPlot.hasOrganicFertilizer || harvestedPlot.hasChemicalFertilizer || harvestedPlant.isBoosted) size = 'large';
+            if (harvestedPlant.isHybrid || harvestedPlot.hasOrganicFertilizer || harvestedPlot.hasChemicalFertilizer || harvestedPlant.isBoosted || harvestedPlot.hasGreenManureFromBean) size = 'large';
             else if (harvestedPlant.isSmall) size = 'small';
 
             setInventory(currentInventory => {
@@ -997,8 +1053,8 @@ const App = () => {
             const otherPlantPlotIds = garden.filter(p => p.id !== plotId && p.plant).map(p => p.id);
 
             // IMEDIATO: Feijão desaparece do campo
-            // Update: Reset fertilizer flags
-            setGarden(currentGarden => currentGarden.map(p => (p.id === plotId ? { ...p, plant: null, isWatered: false, hasOrganicFertilizer: false, hasChemicalFertilizer: false } : p)));
+            // Update: Reset fertilizer flags for the harvested plot
+            setGarden(currentGarden => currentGarden.map(p => (p.id === plotId ? { ...p, plant: null, isWatered: false, hasOrganicFertilizer: false, hasChemicalFertilizer: false, hasGreenManureFromBean: false } : p)));
 
             // 1. Mostrar mensagem "Dica de Colheita (Feijão)"
             addNotification(
@@ -1006,7 +1062,7 @@ const App = () => {
                 "Corte a planta na superfície, deixando as raízes no solo. Os nódulos das bactérias ficam e liberam nitrogênio no solo.",
                 () => {
                     // Este callback é executado quando a "Dica de Colheita" é dispensada
-                    console.log("Dica de Colheita dismissed. Showing Adubação Verde...");
+                    // console.log("Dica de Colheita dismissed. Showing Adubação Verde...");
                     // 2. Mostrar mensagem "Adubação Verde" - Envolvido em setTimeout para evitar race condition
                     setTimeout(() => {
                         addNotification(
@@ -1014,7 +1070,7 @@ const App = () => {
                             "As raízes do feijão liberaram nitrogênio, fertilizando todas as outras plantas na sua horta!",
                             () => {
                                 // Este callback é executado quando a "Adubação Verde" é dispensada
-                                console.log("Adubação Verde dismissed. Triggering animation...");
+                                // console.log("Adubação Verde dismissed. Triggering animation...");
 
                                 if (otherPlantPlotIds.length > 0) {
                                     setFertilizingPlots(otherPlantPlotIds); // Inicia a animação
@@ -1024,17 +1080,17 @@ const App = () => {
                                         setGarden(currentGarden => {
                                             return currentGarden.map(p => {
                                                 if (otherPlantPlotIds.includes(p.id)) {
-                                                    // Update: Set organic fertilizer flag
-                                                    return { ...p, hasOrganicFertilizer: true };
+                                                    // Update: Set NEW green manure flag
+                                                    return { ...p, hasGreenManureFromBean: true };
                                                 }
                                                 return p;
                                             });
                                         });
-                                        console.log("Fertilization animation complete and fertilizer applied.");
+                                        // console.log("Fertilization animation complete and fertilizer applied.");
                                     }, 3500); // Duração da animação (1.5s) + um pequeno delay para garantir que seja visível
                                 } else {
                                     addNotification("Sem Plantas para Adubar", "Não há outras plantas na horta para se beneficiar da adubação verde.");
-                                    console.log("No other plants to fertilize.");
+                                    // console.log("No other plants to fertilize.");
                                 }
                             }
                         );
@@ -1044,7 +1100,7 @@ const App = () => {
         } else {
             // For other plants or sprouts, just update the garden immediately
             // Update: Reset fertilizer flags
-            setGarden(currentGarden => currentGarden.map(p => (p.id === plotId ? { ...p, plant: null, isWatered: false, hasOrganicFertilizer: false, hasChemicalFertilizer: false } : p)));
+            setGarden(currentGarden => currentGarden.map(p => (p.id === plotId ? { ...p, plant: null, isWatered: false, hasOrganicFertilizer: false, hasChemicalFertilizer: false, hasGreenManureFromBean: false } : p)));
         }
     } else {
         // --- OTHER TOOLS LOGIC ---
@@ -1053,37 +1109,44 @@ const App = () => {
             const currentPlot = newGarden.find(p => p.id === plotId);
             if (!currentPlot) return currentGarden;
 
+            // Reset green manure from bean if planting a new plant
             if (selectedTool && Object.keys(PLANT_CONFIG).includes(selectedTool) && !currentPlot.plant) {
-            currentPlot.plant = createPlant(selectedTool as PlantType);
-            if (weather.includes('raining')) {
-                currentPlot.isWatered = true;
-                growPlant(currentPlot.id);
-            }
-            return newGarden;
+                currentPlot.plant = createPlant(selectedTool as PlantType);
+                currentPlot.hasGreenManureFromBean = false; // New plant resets this
+                currentPlot.hasOrganicFertilizer = false;
+                currentPlot.hasChemicalFertilizer = false;
+
+                if (weather.includes('raining')) {
+                    currentPlot.isWatered = true;
+                    growPlant(currentPlot.id);
+                }
+                return newGarden;
             }
             
             if (selectedTool === 'regador' && currentPlot.plant?.stage === 'sprout' && !currentPlot.isWatered) {
-            currentPlot.isWatered = true;
-            growPlant(currentPlot.id);
-            return newGarden;
+                currentPlot.isWatered = true;
+                growPlant(currentPlot.id);
+                return newGarden;
             }
 
             if (selectedTool === 'adubo_organico' && currentPlot.plant) {
-                // Update: Set organic fertilizer flag
+                // Update: Set organic fertilizer flag, clear green manure from bean
                 currentPlot.hasOrganicFertilizer = true;
+                currentPlot.hasGreenManureFromBean = false;
                 return newGarden;
             }
 
             if (selectedTool === 'agrotoxico' && currentPlot.plant) {
-                // Update: Set chemical fertilizer flag
+                // Update: Set chemical fertilizer flag, clear green manure from bean
                 currentPlot.hasChemicalFertilizer = true;
+                currentPlot.hasGreenManureFromBean = false;
                 return newGarden;
             }
             
             return currentGarden;
         });
     }
-  }, [selectedTool, growPlant, weather, pollenSack, garden, determineOffspringGenetics, addNotification, isMobile, activeMobilePanel]);
+  }, [selectedTool, growPlant, weather, pollenSack, garden, determineOffspringGenetics, addNotification, isMobile, activeMobilePanel, findEmptySpot]);
 
   // Helper to get coordinates for SVG line
   const getCoordinates = (index: number) => {
@@ -1137,9 +1200,18 @@ const App = () => {
       )}
       
       {/* Bacterium Animation */}
-      {bacteriumAnimation.active && (
-        <div ref={bacteriumRef} className="bacterium-animation">🦠</div>
-      )}
+      {activeBacteriumAnimations.map(bacterium => (
+        <div 
+            key={bacterium.id}
+            className="bacterium-animation" 
+            style={{ 
+                '--start-x': `${bacterium.startX}px`,
+                '--start-y': `${bacterium.startY}px`,
+                '--target-x': `${bacterium.targetX}px`,
+                '--target-y': `${bacterium.targetY}px`,
+            } as React.CSSProperties}
+        >🦠</div>
+      ))}
       
       {/* NOTIFICATION SYSTEM UI */}
       <div className="notification-wrapper">
@@ -1275,11 +1347,16 @@ const App = () => {
               )}
               {/* NEW: Fertilizer Icons Container */}
               <div className="fertilizer-icons-container">
-                {plot.hasOrganicFertilizer && (
+                {/* Conditionally render organic fertilizer icon, but not if it's green manure from bean */}
+                {!plot.hasGreenManureFromBean && plot.hasOrganicFertilizer && (
                   <span className="fertilizer-icon organic-icon" aria-label="Adubo Orgânico" data-tooltip="Adubo Orgânico">💩</span>
                 )}
                 {plot.hasChemicalFertilizer && (
                   <span className="fertilizer-icon chemical-icon" aria-label="Agrotóxico" data-tooltip="Agrotóxico">☠️</span>
+                )}
+                {/* NEW: Green Manure from Bean icon */}
+                {plot.hasGreenManureFromBean && (
+                  <span className="fertilizer-icon green-manure-icon" aria-label="Adubação Verde (Feijão)" data-tooltip="Nitrogênio do Feijão">🫘</span>
                 )}
                 {plot.plant?.isBoosted && plot.plant.type === 'Feijão' && (
                   <span className="fertilizer-icon boosted-icon" aria-label="Nitrogênio Fixado" data-tooltip="Nitrogênio Fixado">🫘</span>

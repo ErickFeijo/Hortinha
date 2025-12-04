@@ -92,7 +92,7 @@ body {
   position: fixed;
   bottom: 1.5rem;
   left: 1.5rem;
-  z-index: 50;
+  z-index: 120; /* Increased to appear above mobile panels (z-index 101) */
 }
 
 .notification-bell {
@@ -1134,7 +1134,7 @@ body {
 .bacterium-animation {
     position: absolute;
     font-size: 4.5rem;
-    z-index: 16; /* Above bees */
+    z-index: 115; /* Increased to appear above mobile backdrop (z-index 100) */
     pointer-events: none;
     filter: drop-shadow(0 0 10px #9575cd);
     left: var(--start-x);
@@ -1278,7 +1278,7 @@ body {
     position: fixed; /* Explicitly fixed for mobile */
     bottom: calc(1rem + var(--mobile-nav-height)); /* Position above mobile nav */
     left: 1rem;
-    z-index: 100; /* ENSURE it's above backdrop and floating panels */
+    z-index: 120; /* ENSURE it's above backdrop and floating panels */
   }
 
   /* Floating Panels (Tools, Seeds, Inventory) - Mobile Behavior */
