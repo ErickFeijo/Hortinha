@@ -259,18 +259,16 @@ const App = () => {
       let isInbreeding = false;
       let isHybrid = false;
 
-      // Logic Priority 1: Heterosis (Two small parents -> Big Hybrid)
-      if (plantA.isSmall && plantB.isSmall) {
+      // Check for inbreeding first
+      const isAparentOfB = plantB.parentIds?.includes(plantA.instanceId);
+      const isBparentOfA = plantA.parentIds?.includes(plantB.instanceId); // Corrected bug here
+      const isSelf = plantA.instanceId === plantB.instanceId;
+      
+      isInbreeding = isAparentOfB || isBparentOfA || isSelf;
+
+      // Hybrid vigor condition: both parents are small AND they are NOT inbred.
+      if (plantA.isSmall && plantB.isSmall && !isInbreeding) {
           isHybrid = true;
-          isInbreeding = false;
-      } else {
-            // Logic Priority 2: Inbreeding (Parent-Child or Siblings -> Small)
-            // Also covers Self-pollination where plantA.instanceId === plantB.instanceId
-          const isAparentOfB = plantB.parentIds?.includes(plantA.instanceId);
-          const isBparentOfA = plantA.parentIds?.includes(plantB.instanceId);
-          const isSelf = plantA.instanceId === plantB.instanceId;
-          
-          isInbreeding = isAparentOfB || isBparentOfA || isSelf;
       }
       
       return { isInbreeding, isHybrid };
