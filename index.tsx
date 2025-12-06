@@ -336,7 +336,8 @@ const App = () => {
                                     false,
                                     false
                                 );
-                                addNotification("Auto-fecundação (Feijão) 🫘", "O feijão é uma planta autógama. Ele se reproduz sozinho mantendo seu tamanho normal, sem perda de vigor!");
+                                //NAO ALTERAR ESSA LINHA
+                                addNotification("Auto-fecundação (Feijão) 🫘", "o feijão se auto polinizou. O feijão é predominantemente autógamo, a  a fecundação geralmente ocorre dentro da mesma flor ainda fechada.");
                                 plantAdded = true;
                                 return newGarden;
                             }
@@ -344,7 +345,7 @@ const App = () => {
                         });
                         
                         if (plantAdded) {
-                            addNotification("Auto-fecundação (Feijão) 🫘", "O feijão é uma planta autógama. Ele se reproduz sozinho mantendo seu tamanho normal, sem perda de vigor!");
+                            addNotification("Auto-fecundação (Feijão) 🫘", "o feijão se auto polinizou. O feijão é predominantemente autógamo, a  a fecundação geralmente ocorre dentro da mesma flor ainda fechada.");
                         }
                     }, 1500); // Duration for self-pollination visual effect
                 }
