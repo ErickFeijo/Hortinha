@@ -336,6 +336,7 @@ const App = () => {
                                     false,
                                     false
                                 );
+                                addNotification("Auto-fecundação (Feijão) 🫘", "O feijão é uma planta autógama. Ele se reproduz sozinho mantendo seu tamanho normal, sem perda de vigor!");
                                 plantAdded = true;
                                 return newGarden;
                             }
@@ -812,7 +813,7 @@ const App = () => {
 
               setTimeout(() => {
                   if (isHybrid) {
-                      addNotification("Vigor Híbrido (Heterose) 🚀", "Sua planta cresceu mais forte! O cruzamento entre duas linhagens puras (pequenas) diferentes gerou um híbrido vigoroso e maior que os pais!");
+                      addNotification("Vigor Híbrido (Heterose) 🚀", "O cruzamento de duas plantas de linhagens distintas resultou em vigor híbrido!");
                   } else if (isInbreeding) {
                       addNotification("Depressão Endogâmica 🧬", "Sua planta diminuiu! O cruzamento entre parentes próximos ou auto-fecundação aumentou a homozigose. Isso pode levar a perda de vigor.");
                   } else {
