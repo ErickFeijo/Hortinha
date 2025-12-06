@@ -92,7 +92,7 @@ body {
   position: fixed;
   bottom: 1.5rem;
   left: 1.5rem;
-  z-index: 120; /* Increased to appear above mobile panels (z-index 101) */
+  z-index: 99; /* Adjusted z-index to be behind mobile panels and backdrop */
 }
 
 .notification-bell {
@@ -908,6 +908,7 @@ body {
   border-radius: 6px;
   border: 1px solid rgba(0,0,0,0.05);
   min-width: 40px;
+  position: relative; /* For pesticide indicator positioning */
 }
 
 .variant-emoji {
@@ -934,6 +935,29 @@ body {
   color: var(--primary-green);
   margin-top: 0.1rem;
 }
+
+/* NEW: Pesticide Indicator within Inventory */
+.pesticide-indicator {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  font-size: 0.8rem; /* Smaller than normal emoji */
+  line-height: 1;
+  filter: drop-shadow(0 0 2px rgba(0,0,0,0.3));
+}
+
+.pesticide-indicator[data-tooltip]::after {
+    top: 100%; /* Position below the icon */
+    left: 50%;
+    transform: translateX(-50%);
+    margin-top: 5px; /* Space between icon and tooltip */
+    white-space: nowrap;
+    width: auto;
+    font-size: 0.75rem; /* Smaller tooltip font */
+    padding: 0.3em 0.6em;
+    background-color: #3a2e1c; /* Darker tooltip for pesticide */
+}
+
 
 .empty-inventory-text {
   text-align: center;

@@ -67,7 +67,13 @@ interface Connection {
     type: 'Abóbora' | 'Girassol' | 'Maçã' | 'Milho';
 }
 
-type InventoryState = Partial<Record<PlantType, Record<PlantSize, number>>>;
+// NEW: Type definition for inventory counts including pesticide status
+type InventoryCounts = {
+    count: number;
+    withPesticide: number;
+};
+type InventoryState = Partial<Record<PlantType, Record<PlantSize, InventoryCounts>>>;
+
 
 interface Notification {
     id: string;
@@ -939,10 +945,11 @@ const App = () => {
   }, [lastGrownId, garden, beeState, determineOffspringGenetics, addNotification, weather, checkCornPollination, findEmptySpot]);
   
   const handlePlotClick = useCallback((plotId: number) => {
-    // Close mobile panels if open
+    // If a mobile panel is open, close it first.
+    // BUT DO NOT return, continue processing the plot click.
     if (isMobile && activeMobilePanel !== null) {
       setActiveMobilePanel(null);
-      return; // Do not process plot click if a panel was open
+      // Do not return here. The plot click logic should proceed.
     }
 
     const plot = garden.find(p => p.id === plotId);
@@ -1030,15 +1037,23 @@ const App = () => {
         // Only if it is grown
         if (harvestedPlant.stage === 'grown') {
             let size: PlantSize = 'normal';
-            // Update: Check new boolean fertilizer flags
+            const hadChemicalFertilizer = harvestedPlot.hasChemicalFertilizer; // Capture this flag
             if (harvestedPlant.isHybrid || harvestedPlot.hasOrganicFertilizer || harvestedPlot.hasChemicalFertilizer || harvestedPlant.isBoosted || harvestedPlot.hasGreenManureFromBean) size = 'large';
             else if (harvestedPlant.isSmall) size = 'small';
 
             setInventory(currentInventory => {
-                const plantCounts = currentInventory[type] || { small: 0, normal: 0, large: 0 };
+                const currentTypeInventory = currentInventory[type] || {};
+                const currentSizeCounts = currentTypeInventory[size] || { count: 0, withPesticide: 0 };
+                
                 return {
                     ...currentInventory,
-                    [type]: { ...plantCounts, [size]: plantCounts[size] + 1 }
+                    [type]: {
+                        ...currentTypeInventory,
+                        [size]: {
+                            count: currentSizeCounts.count + 1,
+                            withPesticide: currentSizeCounts.withPesticide + (hadChemicalFertilizer ? 1 : 0),
+                        }
+                    }
                 };
             });
         }
@@ -1441,8 +1456,9 @@ const App = () => {
         <h2>Inventário</h2>
         {Object.keys(inventory).length > 0 ? (
           <div className="inventory-list">
-            {(Object.entries(inventory) as [PlantType, Record<PlantSize, number>][]).map(([type, counts]) => {
-                const total = counts.small + counts.normal + counts.large;
+            {(Object.entries(inventory) as [PlantType, Record<PlantSize, InventoryCounts>][]).map(([type, sizeCounts]) => {
+                // Calculate total for this plant type
+                const total = (sizeCounts.small?.count || 0) + (sizeCounts.normal?.count || 0) + (sizeCounts.large?.count || 0);
                 if (total === 0) return null;
 
                 return (
@@ -1452,22 +1468,34 @@ const App = () => {
                             {type}
                         </div>
                         <div className="inventory-variants">
-                            {counts.small > 0 && (
+                            {/* Small Plants */}
+                            {sizeCounts.small && sizeCounts.small.count > 0 && (
                                 <div className="inventory-variant variant-small" title="Pequeno">
                                     <span className="variant-emoji">{PLANT_CONFIG[type].phenotype}</span>
-                                    <span className="variant-count">{counts.small}</span>
+                                    <span className="variant-count">{sizeCounts.small.count}</span>
+                                    {sizeCounts.small.withPesticide > 0 && (
+                                        <span className="pesticide-indicator" data-tooltip={`${sizeCounts.small.withPesticide} com Agrotóxico`}>☠️</span>
+                                    )}
                                 </div>
                             )}
-                            {counts.normal > 0 && (
+                            {/* Normal Plants */}
+                            {sizeCounts.normal && sizeCounts.normal.count > 0 && (
                                 <div className="inventory-variant variant-normal" title="Normal">
                                     <span className="variant-emoji">{PLANT_CONFIG[type].phenotype}</span>
-                                    <span className="variant-count">{counts.normal}</span>
+                                    <span className="variant-count">{sizeCounts.normal.count}</span>
+                                    {sizeCounts.normal.withPesticide > 0 && (
+                                        <span className="pesticide-indicator" data-tooltip={`${sizeCounts.normal.withPesticide} com Agrotóxico`}>☠️</span>
+                                    )}
                                 </div>
                             )}
-                            {counts.large > 0 && (
+                            {/* Large Plants */}
+                            {sizeCounts.large && sizeCounts.large.count > 0 && (
                                 <div className="inventory-variant variant-large" title="Grande">
                                     <span className="variant-emoji">{PLANT_CONFIG[type].phenotype}</span>
-                                    <span className="variant-count">{counts.large}</span>
+                                    <span className="variant-count">{sizeCounts.large.count}</span>
+                                    {sizeCounts.large.withPesticide > 0 && (
+                                        <span className="pesticide-indicator" data-tooltip={`${sizeCounts.large.withPesticide} com Agrotóxico`}>☠️</span>
+                                    )}
                                 </div>
                             )}
                         </div>
