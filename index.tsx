@@ -261,7 +261,7 @@ const App = () => {
 
       // Check for inbreeding first
       const isAparentOfB = plantB.parentIds?.includes(plantA.instanceId);
-      const isBparentOfA = plantA.parentIds?.includes(plantB.instanceId); // Corrected bug here
+      const isBparentOfA = plantA.parentIds?.includes(plantB.instanceId);
       const isSelf = plantA.instanceId === plantB.instanceId;
       
       isInbreeding = isAparentOfB || isBparentOfA || isSelf;
@@ -902,7 +902,6 @@ const App = () => {
     } else if (plantType === 'Girassol') {
         const currentPlantId = grownPlot.plant.instanceId;
         setTimeout(() => {
-            let didSelfPollinate = false;
             setGarden(currentGarden => {
                 if (beeState === 'visible') {
                     return currentGarden;
@@ -918,18 +917,16 @@ const App = () => {
                 const emptySpotId = findEmptySpot(lastGrownId, currentGarden);
                 if (emptySpotId !== null) {
                     reproducedPlantsRef.current.add(currentPlantId);
-                    didSelfPollinate = true;
                     const newGarden = [...currentGarden];
                     newGarden[emptySpotId].plant = createPlant('Girassol', [currentPlantId], true, false);
+                    
+                    // Trigger notification directly here for Sunflower
+                    addNotification("Auto-polinização (Girassol) 🌻", "Sem abelhas ou outros girassóis por perto, a planta se auto-polinizou. Isso gera sementes menores.");
+                    
                     return newGarden;
                 }
                 return currentGarden;
             });
-            setTimeout(() => {
-                if (didSelfPollinate) {
-                    addNotification("Auto-polinização (Girassol) 🌻", "Sem abelhas ou outros girassóis por perto, a planta se auto-polinizou. Isso gera sementes menores.");
-                }
-            }, 0);
         }, 30000);
     } else if (plantType === 'Maçã') {
         // APPLE LOGIC

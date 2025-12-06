@@ -1278,7 +1278,7 @@ body {
     position: fixed; /* Explicitly fixed for mobile */
     bottom: calc(1rem + var(--mobile-nav-height)); /* Position above mobile nav */
     left: 1rem;
-    z-index: 120; /* ENSURE it's above backdrop and floating panels */
+    z-index: 99; /* Adjusted z-index to be behind mobile panels and backdrop */
   }
 
   /* Floating Panels (Tools, Seeds, Inventory) - Mobile Behavior */
