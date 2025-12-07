@@ -878,6 +878,8 @@ body {
   border: 1px solid #c0a080;
   border-radius: 8px;
   padding: 0.5rem;
+  display: flex; /* Make it a flex container */
+  flex-direction: column; /* Stack header and variants vertically */
 }
 
 .inventory-header {
@@ -894,59 +896,61 @@ body {
 
 .inventory-variants {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
+  flex-direction: column; /* Stack size groups vertically */
+  gap: 0.5rem; /* Space between size groups */
 }
 
-.inventory-variant {
+/* NEW: Styles for separating by size and fertilizer type */
+.inventory-size-group {
+  background: #fff;
+  border-radius: 6px;
+  padding: 0.4rem;
+  border: 1px solid rgba(0,0,0,0.05);
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  background: #fff;
-  padding: 0.25rem 0.5rem;
-  border-radius: 6px;
-  border: 1px solid rgba(0,0,0,0.05);
-  min-width: 40px;
-  position: relative; /* For pesticide indicator positioning */
+  gap: 0.2rem; /* Space between sub-variants */
 }
 
-.variant-emoji {
-  line-height: 1;
-}
-
-.variant-small .variant-emoji {
-  font-size: 1rem;
-  transform: scale(0.8);
-}
-
-.variant-normal .variant-emoji {
-  font-size: 1.4rem;
-}
-
-.variant-large .variant-emoji {
-  font-size: 1.8rem;
-  filter: drop-shadow(0 2px 2px rgba(0,0,0,0.1));
-}
-
-.variant-count {
-  font-size: 0.75rem;
+.inventory-size-label {
+  font-size: 0.85rem;
   font-weight: 700;
   color: var(--primary-green);
-  margin-top: 0.1rem;
+  margin-bottom: 0.2rem;
+  border-bottom: 1px dotted rgba(74, 124, 89, 0.3);
+  padding-bottom: 0.2rem;
+  text-align: center;
 }
 
-/* NEW: Pesticide Indicator within Inventory */
-.pesticide-indicator {
-  position: absolute;
-  top: -5px;
-  right: -5px;
-  font-size: 0.8rem; /* Smaller than normal emoji */
+.inventory-sub-variant {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.8rem;
+  color: var(--text-color);
+  padding: 0 0.2rem;
+}
+
+.sub-variant-label {
+  font-weight: 500;
+  flex-grow: 1; /* Allows label to take available space */
+}
+
+.sub-variant-count {
+  font-weight: 700;
+  min-width: 20px; /* Ensure space for count */
+  text-align: right;
+  margin-left: 0.5rem; /* Space between label and count */
+}
+
+.sub-variant-icon {
+  font-size: 0.9rem; /* Smaller icons */
   line-height: 1;
-  filter: drop-shadow(0 0 2px rgba(0,0,0,0.3));
+  filter: drop-shadow(0 1px 1px rgba(0,0,0,0.2));
+  position: relative;
+  margin-left: 0.3rem; /* Space between count and icon */
 }
 
-.pesticide-indicator[data-tooltip]::after {
+.sub-variant-icon[data-tooltip]::after {
     top: 100%; /* Position below the icon */
     left: 50%;
     transform: translateX(-50%);
@@ -955,7 +959,7 @@ body {
     width: auto;
     font-size: 0.75rem; /* Smaller tooltip font */
     padding: 0.3em 0.6em;
-    background-color: #3a2e1c; /* Darker tooltip for pesticide */
+    background-color: var(--text-color);
 }
 
 

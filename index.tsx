@@ -1502,12 +1502,12 @@ const App = () => {
         {Object.keys(inventory).length > 0 ? (
           <div className="inventory-list">
             {(Object.entries(inventory) as [PlantType, Record<PlantSize, InventoryCounts>][]).map(([type, sizeCounts]) => {
-                // Calculate total for this plant type
-                const total = (sizeCounts.small?.plain || 0) + (sizeCounts.small?.organic || 0) + (sizeCounts.small?.pesticide || 0)
-                            + (sizeCounts.normal?.plain || 0) + (sizeCounts.normal?.organic || 0) + (sizeCounts.normal?.pesticide || 0)
-                            + (sizeCounts.large?.plain || 0) + (sizeCounts.large?.organic || 0) + (sizeCounts.large?.pesticide || 0);
+                // Calculate total for this plant type to check if group should render at all
+                const totalForType = (sizeCounts.small?.plain || 0) + (sizeCounts.small?.organic || 0) + (sizeCounts.small?.pesticide || 0)
+                                   + (sizeCounts.normal?.plain || 0) + (sizeCounts.normal?.organic || 0) + (sizeCounts.normal?.pesticide || 0)
+                                   + (sizeCounts.large?.plain || 0) + (sizeCounts.large?.organic || 0) + (sizeCounts.large?.pesticide || 0);
 
-                if (total === 0) return null;
+                if (totalForType === 0) return null; // Don't render if no plants of this type
 
                 return (
                     <div key={type} className="inventory-group">
@@ -1517,41 +1517,80 @@ const App = () => {
                         </div>
                         <div className="inventory-variants">
                             {/* Small Plants */}
-                            {sizeCounts.small && (sizeCounts.small.plain + sizeCounts.small.organic + sizeCounts.small.pesticide) > 0 && (
-                                <div className="inventory-variant variant-small" title="Pequeno">
-                                    <span className="variant-emoji">{PLANT_CONFIG[type].phenotype}</span>
-                                    <span className="variant-count">{(sizeCounts.small.plain + sizeCounts.small.organic + sizeCounts.small.pesticide)}</span>
-                                    {sizeCounts.small.pesticide > 0 && (
-                                        <span className="pesticide-indicator" data-tooltip={`${sizeCounts.small.pesticide} com Agrotóxico`}>☠️</span>
+                            {(sizeCounts.small?.plain || sizeCounts.small?.organic || sizeCounts.small?.pesticide) > 0 && (
+                                <div className="inventory-size-group">
+                                    <div className="inventory-size-label">Pequena</div>
+                                    {sizeCounts.small.plain > 0 && (
+                                        <div className="inventory-sub-variant">
+                                            <span className="sub-variant-label">Natural:</span>
+                                            <span className="sub-variant-count">{sizeCounts.small.plain}</span>
+                                        </div>
                                     )}
                                     {sizeCounts.small.organic > 0 && (
-                                        <span className="organic-indicator" data-tooltip={`${sizeCounts.small.organic} com Adubo Orgânico`}>💩</span>
+                                        <div className="inventory-sub-variant">
+                                            <span className="sub-variant-label">Orgânica:</span>
+                                            <span className="sub-variant-count">{sizeCounts.small.organic}</span>
+                                            <span className="sub-variant-icon" data-tooltip="Adubo Orgânico">💩</span>
+                                        </div>
+                                    )}
+                                    {sizeCounts.small.pesticide > 0 && (
+                                        <div className="inventory-sub-variant">
+                                            <span className="sub-variant-label">Agrotóxico:</span>
+                                            <span className="sub-variant-count">{sizeCounts.small.pesticide}</span>
+                                            <span className="sub-variant-icon" data-tooltip="Agrotóxico">☠️</span>
+                                        </div>
                                     )}
                                 </div>
                             )}
                             {/* Normal Plants */}
-                            {sizeCounts.normal && (sizeCounts.normal.plain + sizeCounts.normal.organic + sizeCounts.normal.pesticide) > 0 && (
-                                <div className="inventory-variant variant-normal" title="Normal">
-                                    <span className="variant-emoji">{PLANT_CONFIG[type].phenotype}</span>
-                                    <span className="variant-count">{(sizeCounts.normal.plain + sizeCounts.normal.organic + sizeCounts.normal.pesticide)}</span>
-                                    {sizeCounts.normal.pesticide > 0 && (
-                                        <span className="pesticide-indicator" data-tooltip={`${sizeCounts.normal.pesticide} com Agrotóxico`}>☠️</span>
+                            {(sizeCounts.normal?.plain || sizeCounts.normal?.organic || sizeCounts.normal?.pesticide) > 0 && (
+                                <div className="inventory-size-group">
+                                    <div className="inventory-size-label">Normal</div>
+                                    {sizeCounts.normal.plain > 0 && (
+                                        <div className="inventory-sub-variant">
+                                            <span className="sub-variant-label">Natural:</span>
+                                            <span className="sub-variant-count">{sizeCounts.normal.plain}</span>
+                                        </div>
                                     )}
                                     {sizeCounts.normal.organic > 0 && (
-                                        <span className="organic-indicator" data-tooltip={`${sizeCounts.normal.organic} com Adubo Orgânico`}>💩</span>
+                                        <div className="inventory-sub-variant">
+                                            <span className="sub-variant-label">Orgânica:</span>
+                                            <span className="sub-variant-count">{sizeCounts.normal.organic}</span>
+                                            <span className="sub-variant-icon" data-tooltip="Adubo Orgânico">💩</span>
+                                        </div>
+                                    )}
+                                    {sizeCounts.normal.pesticide > 0 && (
+                                        <div className="inventory-sub-variant">
+                                            <span className="sub-variant-label">Agrotóxico:</span>
+                                            <span className="sub-variant-count">{sizeCounts.normal.pesticide}</span>
+                                            <span className="sub-variant-icon" data-tooltip="Agrotóxico">☠️</span>
+                                        </div>
                                     )}
                                 </div>
                             )}
                             {/* Large Plants */}
-                            {sizeCounts.large && (sizeCounts.large.plain + sizeCounts.large.organic + sizeCounts.large.pesticide) > 0 && (
-                                <div className="inventory-variant variant-large" title="Grande">
-                                    <span className="variant-emoji">{PLANT_CONFIG[type].phenotype}</span>
-                                    <span className="variant-count">{(sizeCounts.large.plain + sizeCounts.large.organic + sizeCounts.large.pesticide)}</span>
-                                    {sizeCounts.large.pesticide > 0 && (
-                                        <span className="pesticide-indicator" data-tooltip={`${sizeCounts.large.pesticide} com Agrotóxico`}>☠️</span>
+                            {(sizeCounts.large?.plain || sizeCounts.large?.organic || sizeCounts.large?.pesticide) > 0 && (
+                                <div className="inventory-size-group">
+                                    <div className="inventory-size-label">Grande</div>
+                                    {sizeCounts.large.plain > 0 && (
+                                        <div className="inventory-sub-variant">
+                                            <span className="sub-variant-label">Natural:</span>
+                                            <span className="sub-variant-count">{sizeCounts.large.plain}</span>
+                                        </div>
                                     )}
                                     {sizeCounts.large.organic > 0 && (
-                                        <span className="organic-indicator" data-tooltip={`${sizeCounts.large.organic} com Adubo Orgânico`}>💩</span>
+                                        <div className="inventory-sub-variant">
+                                            <span className="sub-variant-label">Orgânica:</span>
+                                            <span className="sub-variant-count">{sizeCounts.large.organic}</span>
+                                            <span className="sub-variant-icon" data-tooltip="Adubo Orgânico">💩</span>
+                                        </div>
+                                    )}
+                                    {sizeCounts.large.pesticide > 0 && (
+                                        <div className="inventory-sub-variant">
+                                            <span className="sub-variant-label">Agrotóxico:</span>
+                                            <span className="sub-variant-count">{sizeCounts.large.pesticide}</span>
+                                            <span className="sub-variant-icon" data-tooltip="Agrotóxico">☠️</span>
+                                        </div>
                                     )}
                                 </div>
                             )}
