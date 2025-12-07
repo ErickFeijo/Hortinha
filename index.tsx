@@ -69,8 +69,9 @@ interface Connection {
 
 // NEW: Type definition for inventory counts including pesticide status
 type InventoryCounts = {
-    count: number;
-    withPesticide: number;
+    plain: number;          // Plants without specific fertilizer types
+    organic: number;        // Plants with organic fertilizer or green manure effect
+    pesticide: number;      // Plants with chemical fertilizer (pesticide)
 };
 type InventoryState = Partial<Record<PlantType, Record<PlantSize, InventoryCounts>>>;
 
@@ -270,7 +271,11 @@ const App = () => {
       const isBparentOfA = plantA.parentIds?.includes(plantB.instanceId);
       const isSelf = plantA.instanceId === plantB.instanceId;
       
-      isInbreeding = isAparentOfB || isBparentOfA || isSelf;
+      // NEW: Check for common immediate parents
+      const commonParents = (plantA.parentIds || []).filter(id => (plantB.parentIds || []).includes(id));
+      const hasCommonImmediateParent = commonParents.length > 0;
+
+      isInbreeding = isAparentOfB || isBparentOfA || isSelf || hasCommonImmediateParent;
 
       // Hybrid vigor condition: both parents are small AND they are NOT inbred.
       if (plantA.isSmall && plantB.isSmall && !isInbreeding) {
@@ -319,7 +324,9 @@ const App = () => {
                     
                     setTimeout(() => {
                         setAnimatingPlots(prev => prev.filter(pId => pId !== plotId));
-                        let plantAdded = false;
+                        
+                        let wasPlantAdded = false; // Flag to capture if plant was added
+
                         setGarden(innerGarden => { // Use innerGarden to avoid stale closure
                             const parentPlot = innerGarden[plotId];
                             if (!parentPlot?.plant || parentPlot.plant.instanceId !== plantInstanceId) {
@@ -336,16 +343,17 @@ const App = () => {
                                     false,
                                     false
                                 );
-                                //NAO ALTERAR ESSA LINHA
-                                addNotification("Auto-fecundação (Feijão) 🫘", "o feijão se auto polinizou. O feijão é predominantemente autógamo, a  a fecundação geralmente ocorre dentro da mesma flor ainda fechada.");
-                                plantAdded = true;
+                                wasPlantAdded = true; // Set flag
                                 return newGarden;
                             }
                             return innerGarden;
                         });
                         
-                        if (plantAdded) {
-                            addNotification("Auto-fecundação (Feijão) 🫘", "o feijão se auto polinizou. O feijão é predominantemente autógamo, a  a fecundação geralmente ocorre dentro da mesma flor ainda fechada.");
+                        // Use the captured flag to determine notification
+                        if (wasPlantAdded) {
+                            addNotification("Auto-fecundação (Feijão) 🫘", "O feijão se auto polinizou. É predominantemente autógamo, a fecundação ocorre dentro da mesma flor ainda fechada.");
+                        } else {
+                            addNotification("Sem Espaço para Auto-fecundação (Feijão) 🫘", "O feijão tentou se auto-polinizar, mas não havia espaço no jardim para um novo broto.");
                         }
                     }, 1500); // Duration for self-pollination visual effect
                 }
@@ -534,7 +542,7 @@ const App = () => {
                       });
 
                       newPlantsInfo.forEach(info => {
-                          if (info.isHybrid) addNotification("Vigor Híbrido (Heterose) 🚀", "O vento cruzou duas plantas e gerou um híbrido vigoroso!");
+                          if (info.isHybrid) addNotification("Vigor Híbrido (Heterose) 🚀", "O cruzamento de duas plantas de linhagens distintas resultou em vigor híbrido!");
                           else if (info.isInbreeding) addNotification("Depressão Endogâmica 🧬", "O vento cruzou plantas parentes, gerando uma menor.");
                           else addNotification("Polinização do Milho 🌽", "O vento polinizou um par de milhos com sucesso!");
                       });
@@ -771,7 +779,7 @@ const App = () => {
         const isSourceParentOfPartner = partner.plant!.parentIds?.includes(source.plant!.instanceId);
         const isPartnerParentOfSource = source.plant!.parentIds?.includes(partner.plant!.instanceId);
         if (isSourceParentOfPartner || isPartnerParentOfSource) {
-            addNotification("Polinização Inválida (Maçã) 🍎", "Autoincompatibilidade gametofítica: A polinização entre plantas parentes é evitada para manter a diversidade genética.");
+            // Removed addNotification for automatic pollination
             reproducedPlantsRef.current.add(sourceId); // Still mark source as used to avoid immediate re-attempt
             reproducedPlantsRef.current.add(partnerId); // Mark partner too
             return false; // Prevent pollination
@@ -1039,22 +1047,33 @@ const App = () => {
         // Only if it is grown
         if (harvestedPlant.stage === 'grown') {
             let size: PlantSize = 'normal';
-            const hadChemicalFertilizer = harvestedPlot.hasChemicalFertilizer; // Capture this flag
-            if (harvestedPlant.isHybrid || harvestedPlot.hasOrganicFertilizer || harvestedPlot.hasChemicalFertilizer || harvestedPlant.isBoosted || harvestedPlot.hasGreenManureFromBean) size = 'large';
+            const hasChemicalFertilizer = harvestedPlot.hasChemicalFertilizer; 
+            const hasOrganicFertilizer = harvestedPlot.hasOrganicFertilizer;
+            const hasGreenManureFromBean = harvestedPlot.hasGreenManureFromBean; // Also impacts organic effect
+
+            if (harvestedPlant.isHybrid || hasOrganicFertilizer || hasChemicalFertilizer || harvestedPlant.isBoosted || hasGreenManureFromBean) size = 'large';
             else if (harvestedPlant.isSmall) size = 'small';
 
             setInventory(currentInventory => {
                 const currentTypeInventory = currentInventory[type] || {};
-                const currentSizeCounts = currentTypeInventory[size] || { count: 0, withPesticide: 0 };
+                const currentSizeCounts: InventoryCounts = currentTypeInventory[size] || { plain: 0, organic: 0, pesticide: 0 }; // Initialize with new structure
+                
+                let updatedCounts = { ...currentSizeCounts };
+
+                // Determine fertilizer category for the harvested plant
+                if (hasChemicalFertilizer) {
+                    updatedCounts.pesticide += 1;
+                } else if (hasOrganicFertilizer || hasGreenManureFromBean) {
+                    updatedCounts.organic += 1;
+                } else {
+                    updatedCounts.plain += 1;
+                }
                 
                 return {
                     ...currentInventory,
                     [type]: {
                         ...currentTypeInventory,
-                        [size]: {
-                            count: currentSizeCounts.count + 1,
-                            withPesticide: currentSizeCounts.withPesticide + (hadChemicalFertilizer ? 1 : 0),
-                        }
+                        [size]: updatedCounts,
                     }
                 };
             });
@@ -1144,6 +1163,7 @@ const App = () => {
             if (selectedTool === 'adubo_organico' && currentPlot.plant) {
                 // Update: Set organic fertilizer flag, clear green manure from bean
                 currentPlot.hasOrganicFertilizer = true;
+                currentPlot.hasChemicalFertilizer = false; // Ensure mutual exclusivity
                 currentPlot.hasGreenManureFromBean = false;
                 return newGarden;
             }
@@ -1151,6 +1171,7 @@ const App = () => {
             if (selectedTool === 'agrotoxico' && currentPlot.plant) {
                 // Update: Set chemical fertilizer flag, clear green manure from bean
                 currentPlot.hasChemicalFertilizer = true;
+                currentPlot.hasOrganicFertilizer = false; // Ensure mutual exclusivity
                 currentPlot.hasGreenManureFromBean = false;
                 return newGarden;
             }
@@ -1185,6 +1206,12 @@ const App = () => {
     }
   }, [isMobile]);
 
+  // Helper to check if a bacterium animation is active on a specific plot
+  // This helper is now only used to know when to show the traveling bacterium, not to hide the plant.
+  const isBacteriumAnimatingOnPlot = useCallback((plotId: number) => {
+      return activeBacteriumAnimations.some(anim => anim.plotId === plotId);
+  }, [activeBacteriumAnimations]);
+
   return (
     <div className={`app-container ${weather.includes('raining') ? 'is-raining' : ''} ${isMobile ? 'is-mobile' : ''}`}>
       {/* Wind Overlay */}
@@ -1211,7 +1238,7 @@ const App = () => {
           </div>
       )}
       
-      {/* Bacterium Animation */}
+      {/* Bacterium Animation - This is for the traveling bacterium */}
       {activeBacteriumAnimations.map(bacterium => (
         <div 
             key={bacterium.id}
@@ -1337,45 +1364,61 @@ const App = () => {
         </svg>
 
         <div className="garden-grid">
-          {garden.map(plot => (
-            <div
-              key={plot.id}
-              className={`garden-plot ${plot.isWatered ? 'watered' : ''} ${plot.hasChemicalFertilizer ? 'chemical-soil' : ''} ${animatingPlots.includes(plot.id) ? 'combining' : ''} ${fertilizingPlots.includes(plot.id) ? 'fertilizing-effect' : ''} ${pollenSack?.sourcePlotId === plot.id ? 'pollen-source' : ''}`}
-              onClick={() => handlePlotClick(plot.id)}
-              role="button"
-              aria-label={`Lote de terra ${plot.id + 1}. ${plot.plant ? `Contém ${plot.plant.phenotype}` : 'Vazio'}`}
-            >
-              {plot.plant && (
-                <div className={`plant ${plot.hasOrganicFertilizer || plot.hasChemicalFertilizer ? 'plant-large' : ''} ${plot.plant.isSmall ? 'plant-small' : ''} ${plot.plant.isHybrid ? 'plant-hybrid' : ''} ${plot.plant.isBoosted ? 'boosted' : ''}`}>
-                  {plot.plant.stage === 'sprout' ? (
-                    <div className="sprout-container">
-                      <span className="sprout-emoji">🌱</span>
-                      <span className="sprout-type-icon">{plot.plant.phenotype}</span>
-                    </div>
-                  ) : (
-                    plot.plant.phenotype
+          {garden.map(plot => {
+            // Fix: Re-writing the div's attributes to resolve "multiple attributes with the same name" error.
+            // This ensures no hidden duplicate attributes exist.
+            const plotClassName = [
+              'garden-plot',
+              plot.isWatered ? 'watered' : '',
+              plot.hasChemicalFertilizer ? 'chemical-soil' : '',
+              animatingPlots.includes(plot.id) ? 'combining' : '',
+              fertilizingPlots.includes(plot.id) ? 'fertilizing-effect' : '',
+              pollenSack?.sourcePlotId === plot.id ? 'pollen-source' : ''
+            ].filter(Boolean).join(' ');
+
+            const plotAriaLabel = `Lote de terra ${plot.id + 1}. ${plot.plant ? `Contém ${plot.plant.phenotype}` : 'Vazio'}`;
+
+            return (
+              <div
+                key={plot.id}
+                className={plotClassName}
+                onClick={() => handlePlotClick(plot.id)}
+                role="button"
+                aria-label={plotAriaLabel}
+              >
+                {plot.plant && ( /* Removed !isBacteriumAnimatingOnPlot(plot.id) */
+                  <div className={`plant ${plot.hasOrganicFertilizer || plot.hasChemicalFertilizer ? 'plant-large' : ''} ${plot.plant.isSmall ? 'plant-small' : ''} ${plot.plant.isHybrid ? 'plant-hybrid' : ''} ${plot.plant.isBoosted ? 'boosted' : ''}`}>
+                    {plot.plant.stage === 'sprout' ? (
+                      <div className="sprout-container">
+                        <span className="sprout-emoji">🌱</span>
+                        <span className="sprout-type-icon">{plot.plant.phenotype}</span>
+                      </div>
+                    ) : (
+                      plot.plant.phenotype
+                    )}
+                  </div>
+                )}
+                {/* NEW: Fertilizer Icons Container */}
+                <div className="fertilizer-icons-container">
+                  {/* Conditionally render organic fertilizer icon, but not if it's green manure from bean */}
+                  {!plot.hasGreenManureFromBean && plot.hasOrganicFertilizer && (
+                    <span className="fertilizer-icon organic-icon" aria-label="Adubo Orgânico" data-tooltip="Adubo Orgânico">💩</span>
+                  )}
+                  {plot.hasChemicalFertilizer && (
+                    <span className="fertilizer-icon chemical-icon" aria-label="Agrotóxico" data-tooltip="Agrotóxico">☠️</span>
+                  )}
+                  {/* NEW: Green Manure from Bean icon */}
+                  {plot.hasGreenManureFromBean && (
+                    <span className="fertilizer-icon green-manure-icon" aria-label="Adubação Verde (Feijão)" data-tooltip="Nitrogênio do Feijão">🫘</span>
+                  )}
+                  {/* Modified boosted-icon for Feijão to show bacterium 🦠 */}
+                  {plot.plant?.isBoosted && plot.plant.type === 'Feijão' && (
+                    <span className="fertilizer-icon boosted-icon" aria-label="Nitrogênio Fixado" data-tooltip="Nitrogênio Fixado">🦠</span>
                   )}
                 </div>
-              )}
-              {/* NEW: Fertilizer Icons Container */}
-              <div className="fertilizer-icons-container">
-                {/* Conditionally render organic fertilizer icon, but not if it's green manure from bean */}
-                {!plot.hasGreenManureFromBean && plot.hasOrganicFertilizer && (
-                  <span className="fertilizer-icon organic-icon" aria-label="Adubo Orgânico" data-tooltip="Adubo Orgânico">💩</span>
-                )}
-                {plot.hasChemicalFertilizer && (
-                  <span className="fertilizer-icon chemical-icon" aria-label="Agrotóxico" data-tooltip="Agrotóxico">☠️</span>
-                )}
-                {/* NEW: Green Manure from Bean icon */}
-                {plot.hasGreenManureFromBean && (
-                  <span className="fertilizer-icon green-manure-icon" aria-label="Adubação Verde (Feijão)" data-tooltip="Nitrogênio do Feijão">🫘</span>
-                )}
-                {plot.plant?.isBoosted && plot.plant.type === 'Feijão' && (
-                  <span className="fertilizer-icon boosted-icon" aria-label="Nitrogênio Fixado" data-tooltip="Nitrogênio Fixado">🫘</span>
-                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </main>
 
@@ -1460,7 +1503,10 @@ const App = () => {
           <div className="inventory-list">
             {(Object.entries(inventory) as [PlantType, Record<PlantSize, InventoryCounts>][]).map(([type, sizeCounts]) => {
                 // Calculate total for this plant type
-                const total = (sizeCounts.small?.count || 0) + (sizeCounts.normal?.count || 0) + (sizeCounts.large?.count || 0);
+                const total = (sizeCounts.small?.plain || 0) + (sizeCounts.small?.organic || 0) + (sizeCounts.small?.pesticide || 0)
+                            + (sizeCounts.normal?.plain || 0) + (sizeCounts.normal?.organic || 0) + (sizeCounts.normal?.pesticide || 0)
+                            + (sizeCounts.large?.plain || 0) + (sizeCounts.large?.organic || 0) + (sizeCounts.large?.pesticide || 0);
+
                 if (total === 0) return null;
 
                 return (
@@ -1471,32 +1517,41 @@ const App = () => {
                         </div>
                         <div className="inventory-variants">
                             {/* Small Plants */}
-                            {sizeCounts.small && sizeCounts.small.count > 0 && (
+                            {sizeCounts.small && (sizeCounts.small.plain + sizeCounts.small.organic + sizeCounts.small.pesticide) > 0 && (
                                 <div className="inventory-variant variant-small" title="Pequeno">
                                     <span className="variant-emoji">{PLANT_CONFIG[type].phenotype}</span>
-                                    <span className="variant-count">{sizeCounts.small.count}</span>
-                                    {sizeCounts.small.withPesticide > 0 && (
-                                        <span className="pesticide-indicator" data-tooltip={`${sizeCounts.small.withPesticide} com Agrotóxico`}>☠️</span>
+                                    <span className="variant-count">{(sizeCounts.small.plain + sizeCounts.small.organic + sizeCounts.small.pesticide)}</span>
+                                    {sizeCounts.small.pesticide > 0 && (
+                                        <span className="pesticide-indicator" data-tooltip={`${sizeCounts.small.pesticide} com Agrotóxico`}>☠️</span>
+                                    )}
+                                    {sizeCounts.small.organic > 0 && (
+                                        <span className="organic-indicator" data-tooltip={`${sizeCounts.small.organic} com Adubo Orgânico`}>💩</span>
                                     )}
                                 </div>
                             )}
                             {/* Normal Plants */}
-                            {sizeCounts.normal && sizeCounts.normal.count > 0 && (
+                            {sizeCounts.normal && (sizeCounts.normal.plain + sizeCounts.normal.organic + sizeCounts.normal.pesticide) > 0 && (
                                 <div className="inventory-variant variant-normal" title="Normal">
                                     <span className="variant-emoji">{PLANT_CONFIG[type].phenotype}</span>
-                                    <span className="variant-count">{sizeCounts.normal.count}</span>
-                                    {sizeCounts.normal.withPesticide > 0 && (
-                                        <span className="pesticide-indicator" data-tooltip={`${sizeCounts.normal.withPesticide} com Agrotóxico`}>☠️</span>
+                                    <span className="variant-count">{(sizeCounts.normal.plain + sizeCounts.normal.organic + sizeCounts.normal.pesticide)}</span>
+                                    {sizeCounts.normal.pesticide > 0 && (
+                                        <span className="pesticide-indicator" data-tooltip={`${sizeCounts.normal.pesticide} com Agrotóxico`}>☠️</span>
+                                    )}
+                                    {sizeCounts.normal.organic > 0 && (
+                                        <span className="organic-indicator" data-tooltip={`${sizeCounts.normal.organic} com Adubo Orgânico`}>💩</span>
                                     )}
                                 </div>
                             )}
                             {/* Large Plants */}
-                            {sizeCounts.large && sizeCounts.large.count > 0 && (
+                            {sizeCounts.large && (sizeCounts.large.plain + sizeCounts.large.organic + sizeCounts.large.pesticide) > 0 && (
                                 <div className="inventory-variant variant-large" title="Grande">
                                     <span className="variant-emoji">{PLANT_CONFIG[type].phenotype}</span>
-                                    <span className="variant-count">{sizeCounts.large.count}</span>
-                                    {sizeCounts.large.withPesticide > 0 && (
-                                        <span className="pesticide-indicator" data-tooltip={`${sizeCounts.large.withPesticide} com Agrotóxico`}>☠️</span>
+                                    <span className="variant-count">{(sizeCounts.large.plain + sizeCounts.large.organic + sizeCounts.large.pesticide)}</span>
+                                    {sizeCounts.large.pesticide > 0 && (
+                                        <span className="pesticide-indicator" data-tooltip={`${sizeCounts.large.pesticide} com Agrotóxico`}>☠️</span>
+                                    )}
+                                    {sizeCounts.large.organic > 0 && (
+                                        <span className="organic-indicator" data-tooltip={`${sizeCounts.large.organic} com Adubo Orgânico`}>💩</span>
                                     )}
                                 </div>
                             )}
